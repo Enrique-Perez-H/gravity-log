@@ -155,6 +155,11 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .fig .thin{stroke-width:1;opacity:.5}
 .fig .wall{fill:var(--line)}
 .fig.still{grid-template-columns:1fr 1fr;gap:6px}
+.fig.photo{position:relative;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:var(--bg)}
+.fig.photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.fig.photo img.b{opacity:0}
+.fig.still.photo{display:grid;grid-template-columns:1fr 1fr;aspect-ratio:auto;gap:6px}
+.fig.still.photo img{position:static;aspect-ratio:16/9;opacity:1}
 .video{position:relative;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:var(--bg)}
 .video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 @media (prefers-reduced-motion:no-preference){nav.tabs button,.tick,.check .box{transition:background .15s,color .15s}}
@@ -483,6 +488,18 @@ const MUSCLES = {
   legraise:{main:["core","thigh"],also:["fore"]}, squat:{main:["thigh","glute"],also:["calf"]},
   hinge:{main:["glute","thigh"],also:["calf"]}
 };
+// Real photos (start and end) from free-exercise-db, by exercise and level; levels without one use the drawn figure.
+const PHOTO = {
+  pullup:{0:"Scapular_Pull-Up",2:"Pullups"}, dip:{2:"Dips_-_Triceps_Version"},
+  pushup:{0:"Incline_Push-Up",1:"Pushups",3:"Push-Ups_-_Close_Triceps_Position",7:"Single-Arm_Push-Up"},
+  row:{0:"Inverted_Row",1:"Inverted_Row"}, pike:{5:"Handstand_Push-Ups"},
+  legraise:{0:"Hanging_Leg_Raise",1:"Hanging_Leg_Raise",2:"Hanging_Pike",3:"Hanging_Pike"},
+  squat:{0:"Bodyweight_Squat",1:"Split_Squats"},
+  hinge:{0:"Butt_Lift_Bridge",1:"Single_Leg_Glute_Bridge",3:"Floor_Glute-Ham_Raise",4:"Floor_Glute-Ham_Raise"}
+};
+const PHOTO_ALT = {superman:"Superman",superman_hold:"Superman",table_row:"Inverted_Row",bench_dip:"Bench_Dips",closegrip_pushup:"Push-Ups_-_Close_Triceps_Position",
+  slow_pushup:"Pushups",reverse_crunch:"Reverse_Crunch",chair_knee_tuck:"Seated_Leg_Tucks",dead_bug:"Dead_Bug",split_squat:"Split_Squats",glute_bridge:"Butt_Lift_Bridge",sl_bridge:"Single_Leg_Glute_Bridge"};
+const photoOf = (ex,e) => e.sub ? (PHOTO_ALT[e.sub]||null) : ((PHOTO[ex]||{})[e.level]||null);
 const ALT_EX = {};
 Object.entries(ALTMAP).forEach(([ex,groups])=>groups.forEach(([,ids])=>ids.forEach(id=>{ if(!ALT_EX[id]) ALT_EX[id]=ex })));
 const musclesFor = (ex,e) => MUSCLES[e && e.sub ? (ALT_EX[e.sub]||ex) : ex] || {main:[],also:[]};
@@ -516,10 +533,14 @@ function blend(A,B,s){
   return {t:lerpAng(A.t,B.t,s), a:[lerpAng(A.a[0],B.a[0],s),lerpAng(A.a[1],B.a[1],s)], l:[lerpAng(A.l[0],B.l[0],s),lerpAng(A.l[1],B.l[1],s)],
     l2, h:lerpAng(headAng(A),headAng(B),s), f:A.f, p:A.p};
 }
-function figureSVG(PA, PB, s, mu){
+function frame(PA, PB, s){
   const P = PB ? blend(PA,PB,s) : PA, S = solve(P);
   let dx=S.dx, dy=S.dy;
   if(PB){ const a=solve(PA), b=solve(PB); dx=lerp(a.dx,b.dx,s); if(PA.f!==PB.f) dy=lerp(a.dy,b.dy,s) }
+  return {P,S,dx,dy};
+}
+function figureSVG(PA, PB, s, mu){
+  const {P,S,dx,dy} = frame(PA,PB,s);
   const mv = p => [p[0]+dx, p[1]+dy];
   const [N,H,E,Hd,K,F,Hh] = [S.n,S.hip,S.el,S.hand,S.kn,S.ft,S.head].map(mv), all=S.all;
   const props = (P.p||[]).map(([k,v])=>{
@@ -558,28 +579,40 @@ function figureSVG(PA, PB, s, mu){
   </svg>`;
 }
 const reducedMotion = () => window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-function visualHTML(poses, mu, frozen){
-  const [a,b] = poses, data = encodeURIComponent(JSON.stringify([a,b||null,mu]));
-  if(b && frozen!==undefined) return `<div class="fig">${figureSVG(POSE[a],POSE[b],frozen,mu)}</div>`;
+function visualHTML(poses, mu, frozen, ex, photo){
+  if(photo){
+    const img = (k,c) => `<img class="${c}" src="photos/${photo}/${k}.jpg" alt="" loading="lazy" decoding="async">`;
+    if(reducedMotion()) return `<div class="fig still photo">${img(0,"")}${img(1,"")}</div>`;
+    return `<div class="fig photo" data-photo="${photo}" ${frozen===undefined?"":`data-s="${frozen}"`}>${img(0,"a")}${img(1,"b")}</div>`;
+  }
+  const [a,b] = poses, data = encodeURIComponent(JSON.stringify([a,b||null,mu])), still = !!b && reducedMotion();
   if(!b) return `<div class="fig single">${figureSVG(POSE[a],null,0,mu)}</div>`;
-  if(reducedMotion()) return `<div class="fig still">${figureSVG(POSE[a],null,0,mu)}${figureSVG(POSE[b],null,0,mu)}</div>`;
+  if(still) return `<div class="fig still">${figureSVG(POSE[a],null,0,mu)}${figureSVG(POSE[b],null,0,mu)}</div>`;
+  if(frozen!==undefined) return `<div class="fig">${figureSVG(POSE[a],POSE[b],frozen,mu)}</div>`;
   return `<div class="fig" data-fig="${data}">${figureSVG(POSE[a],POSE[b],0,mu)}</div>`;
 }
 // One loop animates every open panel: hold the start, glide to the end, hold, glide back.
 const FIG = {raf:0, last:0, s:0};
+function drawFigures(){
+  document.querySelectorAll(".fig[data-photo]").forEach(el=>{ const b = el.querySelector("img.b"); if(b) b.style.opacity = el.dataset.s!==undefined ? el.dataset.s : FIG.s });
+  document.querySelectorAll(".fig[data-fig]").forEach(el=>{
+    const [a,b,mu] = JSON.parse(decodeURIComponent(el.dataset.fig)); el.innerHTML = figureSVG(POSE[a],POSE[b],FIG.s,mu);
+  });
+}
 function figTick(now){
-  const els = document.querySelectorAll(".fig[data-fig]");
-  if(!els.length){ FIG.raf=0; return }
+  if(!document.querySelector(".fig[data-fig], .fig[data-photo]")){ FIG.raf=0; return }
   if(now-FIG.last > 33){
     FIG.last = now;
-    const c = (now % 3400) / 3400, u = c<.15 ? 0 : c<.5 ? (c-.15)/.35 : c<.65 ? 1 : 1-(c-.65)/.35, s = u*u*(3-2*u);
-    FIG.s = s;
-    els.forEach(el=>{ const [a,b,mu] = JSON.parse(decodeURIComponent(el.dataset.fig)); el.innerHTML = figureSVG(POSE[a],POSE[b],s,mu) });
+    const c = (now % 3400) / 3400, u = c<.15 ? 0 : c<.5 ? (c-.15)/.35 : c<.65 ? 1 : 1-(c-.65)/.35;
+    FIG.s = u*u*(3-2*u);
+    drawFigures();
   }
   FIG.raf = requestAnimationFrame(figTick);
 }
-function startFigures(){ if(!FIG.raf && document.querySelector(".fig[data-fig]")) FIG.raf = requestAnimationFrame(figTick) }
-
+function startFigures(){
+  if(document.querySelector(".fig[data-photo]")) drawFigures();
+  if(!FIG.raf && document.querySelector(".fig[data-fig], .fig[data-photo]")) FIG.raf = requestAnimationFrame(figTick);
+}
 /* ---------- Storage: this device only (localStorage), with backup export/import ---------- */
 const KEY = {data:"gravity-log:data", draft:"gravity-log:draft", backup:"gravity-log:last-backup"};
 const LS = {get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}};
@@ -751,14 +784,14 @@ function swapPanel(ex, e, sp){
 function showPanel(ex, e, sp){
   const key = e.sub ? "alt:"+e.sub : ex+":"+e.level;
   const id = e.sub ? null : videoOf(ex,e.level);
-  const dynamic = sp.poses.length>1, mu = musclesFor(ex,e);
+  const photo = photoOf(ex,e), dynamic = !!photo || sp.poses.length>1, mu = musclesFor(ex,e);
   const video = !id ? "" : ui.video.has(key)
     ? `<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/${id}?rel=0&playsinline=1" title="${esc(sp.name)} video" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`
     : `<button type="button" class="btn ghost" data-act="video" data-key="${esc(key)}">▶ Load video (needs internet)</button>`;
   return `<div class="panel">
-    ${visualHTML(sp.poses, mu, ui.frozen.get(ex))}
-    ${dynamic && !reducedMotion()?`<button type="button" class="tbtn" data-act="pause" data-ex="${ex}">${ui.frozen.has(ex)?"▶ Play":"⏸ Pause"}</button>`:""}
-    <div class="sub">${dynamic?"Start and end of the movement, side view.":"Hold position, side view."}${mu.main.length?` Main muscles in red: ${mu.main.map(k=>MUSCLE_NAME[k]).join(", ")}.`:""}${mu.also.length?` Also working, in amber: ${mu.also.map(k=>MUSCLE_NAME[k]).join(", ")}.`:""} A simplified sketch; follow the cue above.</div>
+    ${visualHTML(sp.poses, mu, ui.frozen.get(ex), ex, photo)}
+    <div class="tools">${dynamic && !reducedMotion()?`<button type="button" class="tbtn" data-act="pause" data-ex="${ex}">${ui.frozen.has(ex)?"▶ Play":"⏸ Pause"}</button>`:""}</div>
+    <div class="sub">${photo?"Start and end of the movement. Photos: free-exercise-db, public domain.":`${dynamic?"Start and end of the movement":"Hold position"}, side view.`}${mu.main.length?` Main muscles in red: ${mu.main.map(k=>MUSCLE_NAME[k]).join(", ")}.`:""}${mu.also.length?` Also working, in amber: ${mu.also.map(k=>MUSCLE_NAME[k]).join(", ")}.`:""} A simplified model; follow the cue above.</div>
     ${video}
     <div class="sub">${id?`<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener">Open on YouTube</a> · `:""}<a href="${ytSearch(sp.name)}" target="_blank" rel="noopener">Search YouTube for ${esc(sp.name)}</a></div>
   </div>`;

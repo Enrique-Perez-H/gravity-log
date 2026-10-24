@@ -60,10 +60,14 @@ The JSON backup has the same data plus your current levels: `{"levels": {...}, "
 ## Equipment swaps and exercise visuals
 
 Each exercise card on Train has two buttons:
-- **Show me** opens a stick-figure animation of the start and end of the movement (or the hold position) and a tap-to-load YouTube player. The player needs internet; the animation works offline. Levels without a video id get a YouTube search link instead.
+- **Show me** opens a drawn anatomical figure that moves between the start and end of the movement (or holds the position), with the working muscles coloured: main muscles red, supporting ones amber. Tap Pause to freeze it. Where a real photo exists, Show me plays a start and end photo instead (about 20 levels plus some alternatives; the rest use the drawn figure). It also has a tap-to-load YouTube player. The player needs internet; the animation works offline. Levels without a video id get a YouTube search link instead.
 - **No equipment?** lets you mark the pull-up bar, parallettes or chair/table as missing and shows alternatives that don't need them. The swap lasts for the session only. The alternative is logged under its own name, and the original exercise's level never changes. In the backup JSON it is stored as `alt:<id>` with a `subFor` field.
 
-To edit them, see `NEEDS`, `ALT`, `ALTMAP`, `POSE`, `VIS` and `VIDEO` in `docs/index.html`. Video ids in `VIDEO` were found by search and are not verified; replace any that don't play.
+To edit them, see `NEEDS`, `ALT`, `ALTMAP`, `POSE`, `VIS`, `MUSCLES` and `VIDEO` in `docs/index.html`. Video ids in `VIDEO` were found by search and are not verified; replace any that don't play.
+
+## Photo credits
+
+The exercise photos in `docs/photos/` come from [free-exercise-db](https://github.com/yuhonas/free-exercise-db) (Unlicense, public domain by the maintainer's declaration; the project says it restructured data from `wrkout/exercises.json`, and I could not verify who took the original photos). They are resized to 480 px wide. To change which photo goes with which level, edit `PHOTO` and `PHOTO_ALT` in `docs/index.html`.
 
 ## Changing the program
 
