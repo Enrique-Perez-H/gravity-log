@@ -446,9 +446,19 @@ const VIS = {
 // YouTube video ids, by exercise and level ("*" = every level). A level with no id gets a YouTube search link
 // instead. Ids are found by search and not verified; if one is wrong or can't be embedded, replace it here.
 const VIDEO = {
-  pullup:{"*":"EyJuVR_G6EY",6:"mTJHClMQPM8",7:"mTJHClMQPM8"},
+  handstand:{0:"lzGzDMzTUQE",1:"lzGzDMzTUQE",2:"lzGzDMzTUQE",3:"Z1BEEzg5L6Q",4:"Z1BEEzg5L6Q",5:"rQlBhbZr17g",6:"XtQC5F2dY1s"},
+  pullup:{"*":"EyJuVR_G6EY",4:"_LGLKUiQH5k",5:"bEp2oBM47C0",6:"mTJHClMQPM8",7:"mTJHClMQPM8"},
+  dip:{"*":"1bjuTshW5TA"},
+  pushup:{"*":"C_hEJphpqLU",5:"MxVbNel13Ek",6:"yKdMPaTpK9k",7:"yKdMPaTpK9k"},
+  row:{0:"Fl0UMfdEzsE",1:"Fl0UMfdEzsE",2:"Fl0UMfdEzsE",3:"Fl0UMfdEzsE",4:"4DZPaCOfJOI",5:"4DZPaCOfJOI"},
+  pike:{0:"eN6uwRVdNyY",1:"eN6uwRVdNyY",2:"eN6uwRVdNyY",3:"2fY3DHUZLOs",4:"2fY3DHUZLOs",5:"h0HjqYRlXYg",6:"h0HjqYRlXYg"},
   frontlever:{"*":"abT3pEtoBh4",1:"D-dOt8Ey5Ig",2:"DcZLlnOKZLg",3:"sDz16P6gdkk",4:"bgRVpNRMjG4"},
-  planche:{"*":"dkc6ckhWJ6g",1:"TLRF9oPy6zQ",2:"3Nvdkrh7FP4",4:"lqs6VzClvaI"}
+  planche:{"*":"dkc6ckhWJ6g",1:"TLRF9oPy6zQ",2:"3Nvdkrh7FP4",4:"lqs6VzClvaI"},
+  lsit:{"*":"MsfsE5JHLfU",4:"u4GFwp7HVAM"},
+  hollow:{"*":"W3E2SBg1ViQ"},
+  legraise:{"*":"eIpm8amPMSo",3:"F84DUeiAR3g",4:"af-20PyuwgI"},
+  squat:{3:"CnOE7tdJbmM",4:"CnOE7tdJbmM",5:"7jLiVm4zIkc",6:"7jLiVm4zIkc"},
+  hinge:{3:"F-AaE8mw_pY",4:"F-AaE8mw_pY"}
 };
 const videoOf = (ex,i) => { const v = VIDEO[ex]; return v ? (v[i] || v["*"] || null) : null };
 
