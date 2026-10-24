@@ -127,6 +127,32 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .empty{color:var(--muted);font-size:.9rem;padding:8px 0}
 .data-actions{display:flex;gap:8px;flex-wrap:wrap}
 .banner.backup{background:var(--warn-soft);border:1px solid var(--warn)}
+.tools{display:flex;gap:8px;flex-wrap:wrap}
+.tbtn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:7px 12px;font-size:.82rem;font-weight:600;cursor:pointer}
+.tbtn[aria-expanded="true"],.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:5px 11px;font-size:.8rem;cursor:pointer}
+.chip[aria-pressed="true"]::before{content:"✕ "}
+.panel{border-top:1px dashed var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px}
+.panel a{color:var(--accent)}
+.needs{font-size:.78rem;color:var(--muted)}
+.needs.miss{color:var(--warn);font-weight:600}
+.alt-opt{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.alt-opt .cue{grid-column:1/-1}
+.fig{display:grid;max-width:340px}
+.fig svg{grid-area:1/1;width:100%;height:auto;background:var(--bg);border-radius:10px}
+.fig polyline{fill:none;stroke:var(--ink);stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}
+.fig .head{fill:var(--surface);stroke:var(--ink);stroke-width:2.6}
+.fig .floor{stroke:var(--line);stroke-width:1.5}
+.fig .prop{stroke:var(--accent);stroke-width:2.6;stroke-linecap:round}
+.fig .thin{stroke-width:1;opacity:.5}
+.fig .wall{fill:var(--line)}
+@keyframes figA{0%,35%{opacity:1}50%,85%{opacity:0}100%{opacity:1}}
+@keyframes figB{0%,35%{opacity:0}50%,85%{opacity:1}100%{opacity:0}}
+.fig:not(.single) .a{animation:figA 2.4s ease-in-out infinite}
+.fig:not(.single) .b{animation:figB 2.4s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.fig:not(.single){grid-template-columns:1fr 1fr;gap:6px}.fig:not(.single) svg{grid-area:auto;animation:none!important;opacity:1!important}}
+.video{position:relative;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:var(--bg)}
+.video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 @media (prefers-reduced-motion:no-preference){nav.tabs button,.tick,.check .box{transition:background .15s,color .15s}}
 </style>
 </head>
@@ -261,6 +287,205 @@ const DAYS = {
 const WARMUP = ["Wrist circles, palm and back-of-hand stretches (1 min)","Arm circles and shoulder dislocates with a towel (1 min)","Scapular push-ups ×10","Scapular pulls on the bar ×8","Hollow and arch rocks (30 s each)","Bodyweight squats ×10"];
 const SETS = 3, DELOAD_EVERY = 6;
 
+/* ---------- Equipment, alternatives and visuals ---------- */
+// Equipment you can flag as missing for today's session.
+const EQ = {bar:"Pull-up bar", par:"Parallettes / bars", chair:"Chair / table"};
+// What each level needs, by exercise and level index. Levels not listed need none of the three.
+const NEEDS = {
+  pullup:{"*":["bar"]}, frontlever:{"*":["bar"]}, legraise:{"*":["bar"]}, lsit:{"*":["par"]},
+  dip:{"*":["par"]}, planche:{0:["par"]},
+  pushup:{0:["chair"],2:["par"],6:["chair"]}, pike:{1:["par"],2:["chair"],6:["par"]},
+  row:{0:["chair"],1:["chair"],2:["chair"],3:["chair"],4:["bar"],5:["bar"]},
+  squat:{2:["chair"]}, hinge:{2:["chair"],3:["chair"],4:["chair"]}
+};
+const needsOf = (ex,i) => { const n = NEEDS[ex]; return (n && (n[i] || n["*"])) || [] };
+
+// Alternatives: id -> [name, cue, min, max, unit, needs, [start pose, end pose]]. Logged under their own history.
+const ALT = {
+  superman:["Superman pulls","Face down, arms overhead. Pull the elbows to the ribs while lifting the chest, squeezing the shoulder blades.",8,15,"reps",[],["supA","supB"]],
+  prone_y:["Prone Y raises","Face down, arms in a Y with thumbs up. Lift arms and chest, hold 1 s.",8,15,"reps",[],["supA","supB"]],
+  table_row:["Table rows","Lie under a sturdy table, grip the edge and pull the chest up to it. Body straight.",6,12,"reps",["chair"],["rowBottom","rowTop"]],
+  table_row_hold:["Table-row top hold","At the top of a table row, chest at the edge, body straight. Hold.",8,20,"s",["chair"],["rowTop"]],
+  bench_dip:["Chair dips","Hands on a sturdy chair behind you, legs out. Lower to about 90° at the elbows.",6,12,"reps",["chair"],["benchUp","benchDown"]],
+  closegrip_pushup:["Close-grip push-ups","Hands under the chest, elbows brushing the ribs.",5,12,"reps",[],["plank","pushDown"]],
+  slow_pushup:["Slow push-ups","Push-ups with a 3-second lowering and a 1-second pause at the bottom.",5,10,"reps",[],["plank","pushDown"]],
+  kneel_pushup:["Knee push-ups","Knees on the floor, body straight from knees to head.",8,15,"reps",[],["kneelUp","kneelDown"]],
+  pseudo_pushup:["Pseudo-planche push-ups","Hands by the hips, fingers turned out, lean forward over the hands.",5,8,"reps",[],["plancheLean","pushDown"]],
+  pike_pushup:["Pike push-ups","Hips high, head goes in front of the hands.",5,10,"reps",[],["pike","pikeDown"]],
+  pike_slow:["Slow pike push-ups","3-second lowering, head goes in front of the hands.",4,8,"reps",[],["pike","pikeDown"]],
+  pike_hold:["Pike hold","Hips high, weight over the hands, shoulders pushed up to the ears.",20,40,"s",[],["pike"]],
+  plank_lean:["Plank lean","Straight-arm plank, lean the shoulders forward past the hands.",15,30,"s",[],["plank","plancheLean"]],
+  frog_floor:["Frog stand","Knees on the backs of the elbows, balance on the hands.",15,30,"s",[],["frog"]],
+  lying_leg_raise:["Lying leg raises","Lower back pressed down, raise straight legs to vertical and lower slowly.",8,15,"reps",[],["lieLegsDown","lieLegsUp"]],
+  reverse_crunch:["Reverse crunches","Curl the hips off the floor, knees to the chest.",10,20,"reps",[],["lieLegsDown","lieKnees"]],
+  chair_knee_tuck:["Seated knee tucks","Sit on the chair edge, hands beside the hips. Tuck the knees to the chest and extend.",8,15,"reps",["chair"],["sitLegs","sitTuck"]],
+  dead_bug:["Dead bugs","Back flat, opposite arm and leg lower together. Reps per side.",8,12,"reps",[],["lieKnees","lieLegsDown"]],
+  seated_pike_lift:["Seated pike lifts","Legs straight, hands beside the hips, lift the heels off the floor.",8,15,"reps",[],["sitFloor","sitFloorLift"]],
+  floor_lsit:["L-sit on the floor","Hands flat on the floor beside the hips, lift hips and legs.",8,20,"s",[],["sitFloorLift"]],
+  chair_lsit:["Chair L-sit","Hands on two chair seats, lift the hips and tuck or extend the legs.",10,25,"s",["chair"],["chairLsit"]],
+  hollow_rock:["Hollow rocks","Hold a hollow position and rock back and forth.",10,20,"reps",[],["hollow"]],
+  superman_hold:["Superman hold","Face down, lift arms, chest and legs, squeeze the glutes.",20,40,"s",[],["supB"]],
+  split_squat:["Split squats","Back knee to the floor. Reps per leg.",8,12,"reps",[],["lungeUp","lunge"]],
+  cossack:["Cossack squats","Wide stance, sink onto one leg while the other stays straight. Reps per side.",6,10,"reps",[],["stand","squat"]],
+  sl_rdl:["Single-leg Romanian deadlifts","Hinge forward on one leg, the other leg extends behind. Reps per leg.",8,12,"reps",[],["stand","rdl"]],
+  glute_bridge:["Glute bridges","Squeeze at the top for a second.",12,20,"reps",[],["bridgeDown","bridge"]],
+  sl_bridge:["Single-leg glute bridges","Reps per leg.",8,12,"reps",[],["bridgeDown","bridge1"]],
+  ham_walkout:["Hamstring walkouts","Bridge up, walk the feet out slowly, then back in.",6,10,"reps",[],["bridge","bridgeOut"]]
+};
+// Alternatives by exercise: [first level, ids] groups, the last group at or below the level applies.
+const ALTMAP = {
+  handstand:[[0,["pike_hold","frog_floor","plank_lean"]]],
+  pullup:[[0,["superman","prone_y","table_row"]]],
+  dip:[[0,["closegrip_pushup","bench_dip","pseudo_pushup"]]],
+  pushup:[[0,["kneel_pushup","slow_pushup"]],[2,["closegrip_pushup","slow_pushup"]]],
+  row:[[0,["superman","prone_y"]]],
+  pike:[[0,["pike_pushup","pike_slow","pike_hold"]]],
+  frontlever:[[0,["superman_hold","table_row_hold","hollow_rock"]]],
+  planche:[[0,["plank_lean","pseudo_pushup","frog_floor"]]],
+  lsit:[[0,["floor_lsit","chair_lsit","seated_pike_lift"]]],
+  hollow:[[0,["hollow_rock","dead_bug","superman_hold"]]],
+  legraise:[[0,["lying_leg_raise","reverse_crunch","chair_knee_tuck","dead_bug"]]],
+  squat:[[0,["split_squat","squat"]]],
+  hinge:[[0,["glute_bridge","sl_rdl"]],[1,["sl_bridge","sl_rdl"]],[3,["ham_walkout","sl_rdl"]]]
+};
+function altsFor(ex, level){
+  let ids = [];
+  (ALTMAP[ex] || []).forEach(([from, list]) => { if(level >= from) ids = list });
+  return ids;
+}
+
+// Poses are side-view stick figures facing right, described by angles only (0 = right, 90 = down).
+// t = torso (neck to hip), a = arm (upper arm, forearm), l = leg (thigh, shin), l2 = far leg, h = head angle.
+// f = "floor", or the height of the hands in pixels; p = props: bar, wall (side), sup (support under the hands).
+const POSE = {
+  stand:{t:90,a:[90,90],l:[90,90],f:"floor"},
+  squat:{t:105,a:[0,0],l:[10,95],f:"floor"},
+  lungeUp:{t:90,a:[90,90],l:[90,90],l2:[90,90],f:"floor"},
+  lunge:{t:90,a:[90,90],l:[10,90],l2:[110,180],f:"floor"},
+  rdl:{t:180,a:[90,90],l:[90,90],l2:[180,180],f:"floor"},
+  hang:{t:90,a:[-90,-90],l:[90,90],f:18,p:[["bar"]]},
+  hangUp:{t:90,a:[-115,-65],l:[90,90],f:18,p:[["bar"]]},
+  pullMid:{t:90,a:[170,-90],l:[90,90],f:18,p:[["bar"]]},
+  pullTop:{t:90,a:[115,-75],l:[95,95],f:18,p:[["bar"]]},
+  plank:{t:158,a:[90,90],l:[158,158],f:"floor"},
+  pushDown:{t:168,a:[155,20],l:[168,168],f:"floor"},
+  kneelUp:{t:165,a:[90,90],l:[165,-160],f:"floor"},
+  kneelDown:{t:170,a:[155,20],l:[170,-160],f:"floor"},
+  incTop:{t:125,a:[90,90],l:[125,125],f:63,p:[["sup","chair"]]},
+  incDown:{t:118,a:[155,20],l:[118,118],f:63,p:[["sup","chair"]]},
+  plancheLean:{t:165,a:[100,100],l:[165,165],f:"floor"},
+  supportTop:{t:90,a:[90,90],l:[60,150],f:56,p:[["sup","par"]]},
+  dipDown:{t:90,a:[140,25],l:[60,150],f:56,p:[["sup","par"]]},
+  benchUp:{t:95,a:[100,100],l:[45,45],f:63,p:[["sup","chair"]]},
+  benchDown:{t:95,a:[160,90],l:[45,45],f:63,p:[["sup","chair"]]},
+  wallPlank:{t:-5,a:[90,90],l:[-5,-5],f:"floor",p:[["wall","r"]]},
+  hsWall:{t:-84,a:[90,90],l:[-82,-82],f:"floor",p:[["wall","r"]]},
+  hsDown:{t:-84,a:[140,25],l:[-82,-82],f:"floor",p:[["wall","r"]]},
+  hsFree:{t:-90,a:[90,90],l:[-90,-90],f:"floor"},
+  hsKick:{t:-80,a:[90,90],l:[-85,-85],l2:[-10,60],f:"floor"},
+  pike:{t:-140,a:[90,90],l:[105,105],f:"floor"},
+  pikeDown:{t:-135,a:[140,25],l:[105,105],f:"floor"},
+  flTuck:{t:0,a:[-90,-90],l:[-70,70],h:180,f:18,p:[["bar"]]},
+  flAdv:{t:0,a:[-90,-90],l:[-20,75],h:180,f:18,p:[["bar"]]},
+  flOne:{t:0,a:[-90,-90],l:[0,0],l2:[-70,70],h:180,f:18,p:[["bar"]]},
+  flStraddle:{t:0,a:[-90,-90],l:[-12,-12],l2:[12,12],h:180,f:18,p:[["bar"]]},
+  flFull:{t:0,a:[-90,-90],l:[0,0],h:180,f:18,p:[["bar"]]},
+  rowBottom:{t:172,a:[-90,-90],l:[172,172],f:61,p:[["bar"]]},
+  rowTop:{t:160,a:[160,-80],l:[160,160],f:61,p:[["bar"]]},
+  frog:{t:-160,a:[90,90],l:[50,-150],f:"floor"},
+  pTuck:{t:180,a:[100,100],l:[-15,160],f:"floor"},
+  pAdv:{t:180,a:[100,100],l:[175,-150],f:"floor"},
+  pStraddle:{t:180,a:[100,100],l:[180,180],l2:[168,168],f:"floor"},
+  pFull:{t:180,a:[100,100],l:[180,180],f:"floor"},
+  lsitAssist:{t:90,a:[90,90],l:[25,25],f:77,p:[["sup","par"]]},
+  lsitTuck:{t:90,a:[90,90],l:[-35,60],f:77,p:[["sup","par"]]},
+  lsitOne:{t:90,a:[90,90],l:[0,0],l2:[-35,60],f:77,p:[["sup","par"]]},
+  lsit:{t:90,a:[90,90],l:[0,0],f:77,p:[["sup","par"]]},
+  vsit:{t:90,a:[90,90],l:[-25,-25],f:77,p:[["sup","par"]]},
+  hollow:{t:-5,a:[180,180],l:[-20,-20],h:175,f:"floor"},
+  tuckHollow:{t:-5,a:[180,180],l:[-55,20],h:175,f:"floor"},
+  legsHang:{t:90,a:[-90,-90],l:[0,90],f:18,p:[["bar"]]},
+  legsBent:{t:90,a:[-90,-90],l:[-5,30],f:18,p:[["bar"]]},
+  legsStraight:{t:90,a:[-90,-90],l:[0,0],f:18,p:[["bar"]]},
+  toesBar:{t:90,a:[-90,-90],l:[-70,-70],f:18,p:[["bar"]]},
+  bridgeDown:{t:0,a:[0,0],l:[-60,75],h:180,f:"floor"},
+  bridge:{t:-22,a:[0,0],l:[-30,85],h:180,f:"floor"},
+  bridge1:{t:-22,a:[0,0],l:[-30,85],l2:[-25,-25],h:180,f:"floor"},
+  bridgeOut:{t:-22,a:[0,0],l:[-30,45],h:180,f:"floor"},
+  nordicUp:{t:90,a:[90,90],l:[90,180],f:"floor"},
+  nordicDown:{t:150,a:[90,90],l:[90,180],f:"floor"},
+  supA:{t:180,a:[0,0],l:[180,180],f:"floor"},
+  supB:{t:168,a:[-20,-20],l:[188,188],f:"floor"},
+  lieLegsDown:{t:0,a:[0,0],l:[0,0],h:180,f:"floor"},
+  lieLegsUp:{t:0,a:[0,0],l:[-90,-90],h:180,f:"floor"},
+  lieKnees:{t:0,a:[0,0],l:[-90,180],h:180,f:"floor"},
+  sitLegs:{t:90,a:[90,90],l:[30,30],f:63,p:[["sup","chair"]]},
+  sitTuck:{t:90,a:[90,90],l:[-40,50],f:63,p:[["sup","chair"]]},
+  sitFloor:{t:90,a:[90,90],l:[0,0],f:"floor"},
+  sitFloorLift:{t:90,a:[90,90],l:[-12,-12],f:"floor"},
+  chairLsit:{t:90,a:[90,90],l:[0,0],f:63,p:[["sup","chair"]]}
+};
+
+// Start and end pose per ladder level; a single pose is a static hold.
+const VIS = {
+  handstand:[["wallPlank"],["hsWall"],["hsWall"],["hsWall","hsFree"],["hsKick","hsFree"],["hsFree"],["hsFree"]],
+  pullup:[["hang","hangUp"],["pullTop","hang"],["hang","pullTop"],["hang","pullTop"],["hang","pullTop"],["hang","pullTop"],["pullTop","hang"],["hang","pullTop"]],
+  dip:[["supportTop"],["supportTop","dipDown"],["supportTop","dipDown"],["supportTop","dipDown"],["supportTop","dipDown"]],
+  pushup:[["incTop","incDown"],["plank","pushDown"],["plank","pushDown"],["plank","pushDown"],["plancheLean","pushDown"],["plank","pushDown"],["incTop","incDown"],["plank","pushDown"]],
+  row:[["rowBottom","rowTop"],["rowBottom","rowTop"],["rowBottom","rowTop"],["rowBottom","rowTop"],["flTuck"],["flAdv"]],
+  pike:[["pike","pikeDown"],["pike","pikeDown"],["pike","pikeDown"],["hsWall","hsDown"],["hsWall","hsDown"],["hsWall","hsDown"],["hsWall","hsDown"]],
+  frontlever:[["hang"],["flTuck"],["flAdv"],["flOne"],["flStraddle"],["flFull"]],
+  planche:[["plancheLean"],["frog"],["pTuck"],["pAdv"],["pStraddle"],["pFull"]],
+  lsit:[["lsitAssist"],["lsitTuck"],["lsitOne"],["lsit"],["vsit"]],
+  hollow:[["tuckHollow"],["hollow"],["hollow"],["hollow"]],
+  legraise:[["hang","legsHang"],["hang","legsBent"],["hang","legsStraight"],["hang","toesBar"],["legsStraight","toesBar"]],
+  squat:[["stand","squat"],["lungeUp","lunge"],["lungeUp","lunge"],["stand","squat"],["stand","squat"],["stand","squat"],["stand","squat"]],
+  hinge:[["bridgeDown","bridge"],["bridgeDown","bridge1"],["bridgeDown","bridge1"],["nordicUp","nordicDown"],["nordicUp","nordicDown"]]
+};
+
+// YouTube video ids, by exercise and level ("*" = every level). A level with no id gets a YouTube search link
+// instead. Ids are found by search and not verified; if one is wrong or can't be embedded, replace it here.
+const VIDEO = {
+  pullup:{"*":"EyJuVR_G6EY",6:"mTJHClMQPM8",7:"mTJHClMQPM8"},
+  frontlever:{"*":"abT3pEtoBh4",1:"D-dOt8Ey5Ig",2:"DcZLlnOKZLg",3:"sDz16P6gdkk",4:"bgRVpNRMjG4"},
+  planche:{"*":"dkc6ckhWJ6g",1:"TLRF9oPy6zQ",2:"3Nvdkrh7FP4",4:"lqs6VzClvaI"}
+};
+const videoOf = (ex,i) => { const v = VIDEO[ex]; return v ? (v[i] || v["*"] || null) : null };
+
+/* ---------- Stick-figure drawing ---------- */
+const LEN = {T:22, UA:11, FA:10, TH:15, SH:15, H:8};
+const pt = (p,deg,len) => { const r = deg*Math.PI/180; return [p[0]+Math.cos(r)*len, p[1]+Math.sin(r)*len] };
+const xy = p => p.map(v=>v.toFixed(1)).join(",");
+const line = (pts,op) => `<polyline points="${pts.map(xy).join(" ")}" opacity="${op}"/>`;
+function figureSVG(P, cls){
+  // Build the figure around the origin, then slide it so it stands on the floor (or the hands meet the bar) and sits centred.
+  const n=[0,0], hip=pt(n,P.t,LEN.T), el=pt(n,P.a[0],LEN.UA), hand=pt(el,P.a[1],LEN.FA);
+  const kn=pt(hip,P.l[0],LEN.TH), ft=pt(kn,P.l[1],LEN.SH), head=pt(n,P.h===undefined?P.t+180:P.h,LEN.H);
+  const k2=P.l2 ? pt(hip,P.l2[0],LEN.TH) : null, f2=P.l2 ? pt(k2,P.l2[1],LEN.SH) : null;
+  const all=[n,hip,el,hand,kn,ft,head].concat(k2?[k2,f2]:[]);
+  
+  const dy = P.f==="floor" ? 91-Math.max(...all.map(p=>p[1])) : P.f-hand[1];
+  const xs=all.map(p=>p[0]), dx = 80-(Math.min(...xs)+Math.max(...xs))/2;
+  const mv = p => [p[0]+dx, p[1]+dy];
+  const [N,H,E,Hd,K,F,Hh] = [n,hip,el,hand,kn,ft,head].map(mv);
+  const far = k2 ? line([H,mv(k2),mv(f2)],.45) : "";
+  const props = (P.p||[]).map(([k,v])=>{
+    if(k==="bar") return `<line x1="40" x2="120" y1="18" y2="18" class="prop"/><line x1="40" x2="40" y1="18" y2="91" class="prop thin"/><line x1="120" x2="120" y1="18" y2="91" class="prop thin"/>`;
+    if(k==="wall"){ const x=Math.max(...all.map(p=>p[0]+dx))+4; return `<rect x="${x.toFixed(1)}" y="4" width="5" height="87" class="wall"/>` }
+    if(k==="sup"){ const w = v==="par"?9:14, y=Hd[1], x=Hd[0]; return `<line x1="${x-w}" x2="${x+w}" y1="${y}" y2="${y}" class="prop"/><line x1="${x-w+2}" x2="${x-w+2}" y1="${y}" y2="91" class="prop thin"/><line x1="${x+w-2}" x2="${x+w-2}" y1="${y}" y2="91" class="prop thin"/>` }
+    return "";
+  }).join("");
+  return `<svg class="${cls}" viewBox="0 0 160 100" aria-hidden="true">
+    <line x1="4" x2="156" y1="91" y2="91" class="floor"/>${props}
+    <g class="fig-body">${far}${line([N,H],1)}${line([H,K,F],1)}${line([N,E,Hd],1)}<circle cx="${Hh[0].toFixed(1)}" cy="${Hh[1].toFixed(1)}" r="5" class="head"/></g>
+  </svg>`;
+}
+function visualHTML(poses){
+  const [a,b] = poses;
+  if(!b) return `<div class="fig single">${figureSVG(POSE[a],"a")}</div>`;
+  return `<div class="fig">${figureSVG(POSE[a],"a")}${figureSVG(POSE[b],"b")}</div>`;
+}
+
 /* ---------- Storage: this device only (localStorage), with backup export/import ---------- */
 const KEY = {data:"gravity-log:data", draft:"gravity-log:draft", backup:"gravity-log:last-backup"};
 const LS = {get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}};
@@ -290,10 +515,17 @@ async function deleteSession(id){ S.sessions = S.sessions.filter(s=>s.id!==id); 
 /* Backups: a full JSON file to restore, and a CSV (one row per set) to analyse on a PC. */
 function backupObject(){ return {app:"gravity-log", format:1, exported:new Date().toISOString(), levels:S.levels, sessions:S.sessions} }
 function csvText(){
-  const rows=[["date","day","exercise","pattern","level","level_name","set","value","unit","done"]];
-  S.sessions.forEach(s=>Object.entries(s.entries||{}).forEach(([ex,e])=>{
+  const rows=[["date","day","exercise","pattern","level","level_name","set","value","unit","done","substitute_for"]];
+  S.sessions.forEach(s=>Object.entries(s.entries||{}).forEach(([key,e])=>{
+    const alt = altOf(key);
+    if(alt){
+      if(!ALT[alt] || !EX[e.subFor]) return;
+      e.sets.forEach((v,i)=>rows.push([s.date,s.day,ALT[alt][0],EX[e.subFor].pattern,"",ALT[alt][0],i+1,v,ALT[alt][4],e.done[i]?1:0,EX[e.subFor].name]));
+      return;
+    }
+    const ex = key;
     if(!EX[ex]) return;
-    e.sets.forEach((v,i)=>rows.push([s.date,s.day,EX[ex].name,EX[ex].pattern,e.level+1,EX[ex].levels[e.level][0],i+1,v,EX[ex].unit,e.done[i]?1:0]));
+    e.sets.forEach((v,i)=>rows.push([s.date,s.day,EX[ex].name,EX[ex].pattern,e.level+1,EX[ex].levels[e.level][0],i+1,v,EX[ex].unit,e.done[i]?1:0,""]));
   }));
   return rows.map(r=>r.map(c=>{const t=String(c);return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t}).join(",")).join("\n");
 }
@@ -336,6 +568,19 @@ function lastBackupDays(){ const t=LS.get(KEY.backup,null); return t ? Math.floo
 const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const lv = (ex,i) => { const L=EX[ex].levels[i]; return {name:L[0],cue:L[1],min:L[2],max:L[3]} };
 const unitTxt = ex => EX[ex].unit==="s" ? "s" : "reps";
+// Session entries for an alternative are stored under "alt:<id>" (or "alt:<id>:<exercise>" if it is used twice in a session).
+const altOf = key => key.startsWith("alt:") ? key.split(":")[1] : null;
+// What a card shows and logs: the planned ladder level, or the alternative picked for this session.
+function spec(ex, e){
+  if(e.sub){ const A = ALT[e.sub]; return {name:A[0],cue:A[1],min:A[2],max:A[3],unit:A[4],needs:A[5],poses:A[6],alt:true} }
+  const L = lv(ex,e.level);
+  return {...L, unit:EX[ex].unit, needs:needsOf(ex,e.level), poses:(VIS[ex]||[])[e.level]||["stand"], alt:false};
+}
+function altLastValues(id){
+  let sets = null;
+  S.sessions.forEach(s=>Object.entries(s.entries||{}).forEach(([k,e])=>{ if(altOf(k)===id) sets = e.sets.slice(0,SETS) }));
+  return sets || Array(SETS).fill(ALT[id][2]);
+}
 const todayISO = () => { const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10) };
 const fmtDate = iso => new Date(iso+"T12:00:00").toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"});
 function nextDay(){ const last=S.sessions[S.sessions.length-1]; return last && last.day==="A" ? "B" : "A" }
@@ -370,15 +615,16 @@ function newDraft(d){
   DAYS[d].pairs.flat().concat("handstand").forEach(ex=>{
     const l=S.levels[ex]; entries[ex]={level:l, sets:lastValues(ex,l), done:Array(SETS).fill(false)};
   });
-  return {day:d, date:todayISO(), warm:Array(WARMUP.length).fill(false), entries};
+  return {day:d, date:todayISO(), warm:Array(WARMUP.length).fill(false), missing:[], entries};
 }
 function ensureDraft(){
   if(!day) day = draft ? draft.day : nextDay();
   if(!draft || draft.day!==day){ draft = newDraft(day); LS.set(KEY.draft,draft) }
+  if(!draft.missing) draft.missing = [];
   // keep levels in line with the program if changed elsewhere
   Object.keys(draft.entries).forEach(ex=>{
     const l=S.levels[ex];
-    if(draft.entries[ex].level!==l && !draft.entries[ex].done.some(Boolean)){ draft.entries[ex]={level:l,sets:lastValues(ex,l),done:Array(SETS).fill(false)} }
+    if(draft.entries[ex].level!==l && !draft.entries[ex].sub && !draft.entries[ex].done.some(Boolean)){ draft.entries[ex]={level:l,sets:lastValues(ex,l),done:Array(SETS).fill(false)} }
   });
 }
 const saveDraft = () => LS.set(KEY.draft,draft);
@@ -391,28 +637,67 @@ function render(){
   v.innerHTML = tab==="train" ? viewTrain() : tab==="progress" ? viewProgress() : viewProgram();
 }
 
+const ui = {show:new Set(), swap:new Set(), video:new Set()};
+const ytSearch = name => "https://www.youtube.com/results?search_query="+encodeURIComponent(name+" calisthenics tutorial");
+function swapPanel(ex, e, sp){
+  const chips = Object.entries(EQ).map(([k,t])=>`<button type="button" class="chip" data-act="missing" data-k="${k}" aria-pressed="${draft.missing.includes(k)}">${esc(t)}</button>`).join("");
+  const ids = altsFor(ex,e.level).filter(id=>!ALT[id][5].some(q=>draft.missing.includes(q)));
+  const opts = ids.map(id=>{ const A=ALT[id];
+    return `<div class="alt-opt"><div><b>${esc(A[0])}</b><div class="last">${SETS} × ${A[2]}–${A[3]} ${A[4]==="s"?"s":"reps"}${A[5].length?" · needs "+A[5].map(q=>EQ[q].toLowerCase()).join(", "):" · no equipment"}</div></div>
+      <button type="button" class="btn ghost" data-act="pick" data-ex="${ex}" data-id="${id}" ${e.sub===id?"disabled":""}>${e.sub===id?"In use":"Use"}</button>
+      <div class="cue">${esc(A[1])}</div></div>`}).join("");
+  return `<div class="panel">
+    <div class="sub">What are you missing today?</div><div class="tools">${chips}</div>
+    ${opts || '<div class="sub">No alternative left without that equipment. Skip this one today and log the rest.</div>'}
+    ${e.sub?`<button type="button" class="btn ghost" data-act="unsub" data-ex="${ex}">Back to ${esc(lv(ex,e.level).name)}</button>`:""}
+    <div class="sub">Only for this session. Your level stays where it is, and the alternative is logged under its own name.</div>
+  </div>`;
+}
+function showPanel(ex, e, sp){
+  const key = e.sub ? "alt:"+e.sub : ex+":"+e.level;
+  const id = e.sub ? null : videoOf(ex,e.level);
+  const dynamic = sp.poses.length>1;
+  const video = !id ? "" : ui.video.has(key)
+    ? `<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/${id}?rel=0&playsinline=1" title="${esc(sp.name)} video" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`
+    : `<button type="button" class="btn ghost" data-act="video" data-key="${esc(key)}">▶ Load video (needs internet)</button>`;
+  return `<div class="panel">
+    ${visualHTML(sp.poses)}
+    <div class="sub">${dynamic?"Start and end of the movement, side view.":"Hold position, side view."} A simple sketch; follow the cue above.</div>
+    ${video}
+    <div class="sub">${id?`<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener">Open on YouTube</a> · `:""}<a href="${ytSearch(sp.name)}" target="_blank" rel="noopener">Search YouTube for ${esc(sp.name)}</a></div>
+  </div>`;
+}
 function exCard(ex){
-  const e = draft.entries[ex], L = lv(ex,e.level), step = EX[ex].unit==="s" ? 5 : 1;
+  const e = draft.entries[ex], sp = spec(ex,e), step = sp.unit==="s" ? 5 : 1, unit = sp.unit==="s" ? "s" : "reps";
   const sets = e.sets.map((val,i)=>`
     <div class="set">
       <span class="n">Set ${i+1}</span>
       <div style="display:flex;align-items:center">
         <div class="step">
           <button type="button" data-act="dec" data-ex="${ex}" data-i="${i}" data-step="${step}" aria-label="Less">−</button>
-          <input id="v-${ex}-${i}" type="number" inputmode="numeric" min="0" value="${val}" data-act="val" data-ex="${ex}" data-i="${i}" aria-label="${esc(EX[ex].name)} set ${i+1}">
+          <input id="v-${ex}-${i}" type="number" inputmode="numeric" min="0" value="${val}" data-act="val" data-ex="${ex}" data-i="${i}" aria-label="${esc(sp.name)} set ${i+1}">
           <button type="button" data-act="inc" data-ex="${ex}" data-i="${i}" data-step="${step}" aria-label="More">+</button>
         </div>
-        <span class="unit">${unitTxt(ex)}</span>
+        <span class="unit">${unit}</span>
       </div>
       <button type="button" class="tick" data-act="done" data-ex="${ex}" data-i="${i}" aria-pressed="${e.done[i]}" aria-label="Mark set ${i+1} done">✓</button>
     </div>`).join("");
-  const allTop = e.sets.every((v,i)=>e.done[i] && v>=L.max);
+  const allTop = !e.sub && e.sets.every((v,i)=>e.done[i] && v>=sp.max);
+  const missing = sp.needs.filter(q=>draft.missing.includes(q));
+  const needs = sp.needs.length ? `<div class="needs${missing.length?" miss":""}">Needs: ${sp.needs.map(q=>esc(EQ[q].toLowerCase())).join(", ")}${missing.length?". You marked this as missing, tap No equipment?":""}</div>` : "";
+  const open = ui.swap.has(ex), shown = ui.show.has(ex);
   return `<div class="card">
-    <div class="ex-top"><div><div class="pattern">${esc(EX[ex].pattern)}</div><h3>${esc(L.name)}</h3></div>
-    <span class="lvl">Level ${e.level+1}/${EX[ex].levels.length}</span></div>
-    <div class="cue">${esc(L.cue)}</div>
-    <div class="target">Target ${SETS} × ${L.min}–${L.max} ${unitTxt(ex)}${allTop?' · <span class="hit">top of range hit, levels up on finish</span>':''}</div>
+    <div class="ex-top"><div><div class="pattern">${esc(EX[ex].pattern)}</div><h3>${esc(sp.name)}</h3></div>
+    ${e.sub?'<span class="pill new">Alternative</span>':`<span class="lvl">Level ${e.level+1}/${EX[ex].levels.length}</span>`}</div>
+    <div class="cue">${esc(sp.cue)}</div>
+    ${e.sub?`<div class="needs">Standing in for ${esc(lv(ex,e.level).name)}. Level stays the same.</div>`:needs}
+    <div class="target">Target ${SETS} × ${sp.min}–${sp.max} ${unit}${allTop?' · <span class="hit">top of range hit, levels up on finish</span>':''}</div>
     <div class="sets">${sets}</div>
+    <div class="tools">
+      <button type="button" class="tbtn" data-act="show" data-ex="${ex}" aria-expanded="${shown}">Show me</button>
+      <button type="button" class="tbtn" data-act="swap" data-ex="${ex}" aria-expanded="${open}">No equipment?</button>
+    </div>
+    ${shown?showPanel(ex,e,sp):""}${open?swapPanel(ex,e,sp):""}
   </div>`;
 }
 
@@ -567,6 +852,11 @@ async function finish(){
   const deload=isDeload(), ups=[], entries={};
   Object.entries(draft.entries).forEach(([ex,e])=>{
     if(!e.done.some(Boolean)) return;
+    if(e.sub){
+      const key = entries["alt:"+e.sub] ? `alt:${e.sub}:${ex}` : "alt:"+e.sub;
+      entries[key]={level:0, sets:e.sets.map(Number), done:e.done.slice(), subFor:ex};
+      return;
+    }
     entries[ex]={level:e.level, sets:e.sets.map(Number), done:e.done.slice()};
     const L=lv(ex,e.level);
     if(!deload && e.done.every(Boolean) && e.sets.every(v=>Number(v)>=L.max) && e.level<EX[ex].levels.length-1){ ups.push(ex) }
@@ -588,6 +878,20 @@ document.addEventListener("click", async ev=>{
   const a=b.dataset.act, ex=b.dataset.ex, i=+b.dataset.i;
   if(a==="inc"||a==="dec"){ const e=draft.entries[ex]; e.sets[i]=Math.max(0,Number(e.sets[i])+(a==="inc"?1:-1)*Number(b.dataset.step)); saveDraft(); render() }
   else if(a==="done"){ const e=draft.entries[ex]; e.done[i]=!e.done[i]; saveDraft(); render(); if(e.done[i]) startTimer() }
+  else if(a==="show"){ ui.show.has(ex) ? ui.show.delete(ex) : ui.show.add(ex); render() }
+  else if(a==="swap"){ ui.swap.has(ex) ? ui.swap.delete(ex) : ui.swap.add(ex); render() }
+  else if(a==="missing"){ const k=b.dataset.k, m=draft.missing; m.includes(k) ? m.splice(m.indexOf(k),1) : m.push(k); saveDraft(); render() }
+  else if(a==="pick"){
+    const e=draft.entries[ex];
+    if(e.done.some(Boolean)){ toast("Untick the sets you have done before swapping this exercise."); return }
+    e.sub=b.dataset.id; e.sets=altLastValues(e.sub); e.done=Array(SETS).fill(false); ui.swap.delete(ex); saveDraft(); render();
+  }
+  else if(a==="unsub"){
+    const e=draft.entries[ex];
+    if(e.done.some(Boolean)){ toast("Untick the sets you have done before switching back."); return }
+    delete e.sub; e.sets=lastValues(ex,e.level); e.done=Array(SETS).fill(false); ui.swap.delete(ex); saveDraft(); render();
+  }
+  else if(a==="video"){ ui.video.add(b.dataset.key); render() }
   else if(a==="warm"){ draft.warm[i]=!draft.warm[i]; saveDraft(); render() }
   else if(a==="day"){ if(draft && draft.day!==b.dataset.day && Object.values(draft.entries).some(e=>e.done.some(Boolean))){ toast("Finish or clear the current session before switching day."); return } day=b.dataset.day; draft=null; render() }
   else if(a==="finish"){ b.disabled=true; await finish() }
