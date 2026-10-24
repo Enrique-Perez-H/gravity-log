@@ -155,6 +155,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .fig .thin{stroke-width:1;opacity:.5}
 .fig .wall{fill:var(--line)}
 .fig.still{grid-template-columns:1fr 1fr;gap:6px}
+canvas.fig3d{width:100%;height:auto;display:block;background:var(--bg);border-radius:10px;touch-action:pan-y;cursor:grab}
+.fig.still canvas.fig3d{min-width:0}
 .video{position:relative;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:var(--bg)}
 .video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 @media (prefers-reduced-motion:no-preference){nav.tabs button,.tick,.check .box{transition:background .15s,color .15s}}
@@ -382,24 +384,24 @@ const POSE = {
   dipDown:{t:90,a:[140,25],l:[60,150],f:56,p:[["sup","par"]]},
   benchUp:{t:95,a:[100,100],l:[45,45],f:63,p:[["sup","chair"]]},
   benchDown:{t:95,a:[160,90],l:[45,45],f:63,p:[["sup","chair"]]},
-  wallPlank:{t:-5,a:[90,90],l:[-5,-5],f:"floor",p:[["wall","r"]]},
-  hsWall:{t:-84,a:[90,90],l:[-82,-82],f:"floor",p:[["wall","r"]]},
-  hsDown:{t:-84,a:[140,25],l:[-82,-82],f:"floor",p:[["wall","r"]]},
-  hsFree:{t:-90,a:[90,90],l:[-90,-90],f:"floor"},
-  hsKick:{t:-80,a:[90,90],l:[-85,-85],l2:[-10,60],f:"floor"},
+  wallPlank:{fc:-1,t:-5,a:[90,90],l:[-5,-5],f:"floor",p:[["wall","r"]]},
+  hsWall:{fc:-1,t:-84,a:[90,90],l:[-82,-82],f:"floor",p:[["wall","r"]]},
+  hsDown:{fc:-1,t:-84,a:[140,25],l:[-82,-82],f:"floor",p:[["wall","r"]]},
+  hsFree:{fc:-1,t:-90,a:[90,90],l:[-90,-90],f:"floor"},
+  hsKick:{fc:-1,t:-80,a:[90,90],l:[-85,-85],l2:[-10,60],f:"floor"},
   pike:{t:-140,a:[90,90],l:[105,105],f:"floor"},
   pikeDown:{t:-135,a:[140,25],l:[105,105],f:"floor"},
   flTuck:{t:0,a:[-90,-90],l:[-70,70],h:180,f:18,p:[["bar"]]},
   flAdv:{t:0,a:[-90,-90],l:[-20,75],h:180,f:18,p:[["bar"]]},
   flOne:{t:0,a:[-90,-90],l:[0,0],l2:[-70,70],h:180,f:18,p:[["bar"]]},
-  flStraddle:{t:0,a:[-90,-90],l:[-12,-12],l2:[12,12],h:180,f:18,p:[["bar"]]},
+  flStraddle:{t:0,a:[-90,-90],l:[0,0],sp:30,h:180,f:18,p:[["bar"]]},
   flFull:{t:0,a:[-90,-90],l:[0,0],h:180,f:18,p:[["bar"]]},
-  rowBottom:{t:172,a:[-90,-90],l:[172,172],f:61,p:[["bar"]]},
-  rowTop:{t:160,a:[160,-80],l:[160,160],f:61,p:[["bar"]]},
+  rowBottom:{fc:-1,t:172,a:[-90,-90],l:[172,172],f:61,p:[["bar"]]},
+  rowTop:{fc:-1,t:160,a:[160,-80],l:[160,160],f:61,p:[["bar"]]},
   frog:{t:-160,a:[90,90],l:[50,-150],f:"floor"},
   pTuck:{t:180,a:[100,100],l:[-15,160],f:"floor"},
   pAdv:{t:180,a:[100,100],l:[175,-150],f:"floor"},
-  pStraddle:{t:180,a:[100,100],l:[180,180],l2:[168,168],f:"floor"},
+  pStraddle:{t:180,a:[100,100],l:[180,180],sp:30,f:"floor"},
   pFull:{t:180,a:[100,100],l:[180,180],f:"floor"},
   lsitAssist:{t:90,a:[90,90],l:[25,25],f:77,p:[["sup","par"]]},
   lsitTuck:{t:90,a:[90,90],l:[-35,60],f:77,p:[["sup","par"]]},
@@ -514,12 +516,16 @@ function solve(P){
 function blend(A,B,s){
   const l2 = (A.l2||B.l2) ? [lerpAng((A.l2||A.l)[0],(B.l2||B.l)[0],s), lerpAng((A.l2||A.l)[1],(B.l2||B.l)[1],s)] : null;
   return {t:lerpAng(A.t,B.t,s), a:[lerpAng(A.a[0],B.a[0],s),lerpAng(A.a[1],B.a[1],s)], l:[lerpAng(A.l[0],B.l[0],s),lerpAng(A.l[1],B.l[1],s)],
-    l2, h:lerpAng(headAng(A),headAng(B),s), f:A.f, p:A.p};
+    l2, h:lerpAng(headAng(A),headAng(B),s), f:A.f, p:A.p, fc:A.fc||1, sp:lerp(A.sp||0,B.sp||0,s)};
 }
-function figureSVG(PA, PB, s, mu){
+function frame(PA, PB, s){
   const P = PB ? blend(PA,PB,s) : PA, S = solve(P);
   let dx=S.dx, dy=S.dy;
   if(PB){ const a=solve(PA), b=solve(PB); dx=lerp(a.dx,b.dx,s); if(PA.f!==PB.f) dy=lerp(a.dy,b.dy,s) }
+  return {P,S,dx,dy};
+}
+function figureSVG(PA, PB, s, mu){
+  const {P,S,dx,dy} = frame(PA,PB,s);
   const mv = p => [p[0]+dx, p[1]+dy];
   const [N,H,E,Hd,K,F,Hh] = [S.n,S.hip,S.el,S.hand,S.kn,S.ft,S.head].map(mv), all=S.all;
   const props = (P.p||[]).map(([k,v])=>{
@@ -558,27 +564,67 @@ function figureSVG(PA, PB, s, mu){
   </svg>`;
 }
 const reducedMotion = () => window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-function visualHTML(poses, mu, frozen){
-  const [a,b] = poses, data = encodeURIComponent(JSON.stringify([a,b||null,mu]));
-  if(b && frozen!==undefined) return `<div class="fig">${figureSVG(POSE[a],POSE[b],frozen,mu)}</div>`;
+// The 3D body loads the first time a panel opens. If it can't (no WebGL, offline before the first load), the drawings above are used.
+const D3 = {state:"idle", mod:null, az:new Map(), views:[.7, Math.PI/2, 0]};
+function load3D(){
+  if(D3.state!=="idle") return;
+  D3.state = "loading";
+  import("./body3d.js?v=1").then(m=>{ m.init(); D3.mod=m; D3.state="ready"; render() }).catch(()=>{ D3.state="failed" });
+}
+const azOf = ex => D3.az.has(ex) ? D3.az.get(ex) : D3.views[0];
+function visualHTML(poses, mu, frozen, ex){
+  const [a,b] = poses, data = encodeURIComponent(JSON.stringify([a,b||null,mu])), still = !!b && reducedMotion();
+  if(D3.state==="ready"){
+    const cv = s => `<canvas class="fig3d" width="640" height="400" data-fig="${data}" data-ex="${ex}" ${s===null?"":`data-s="${s}"`}></canvas>`;
+    if(still) return `<div class="fig still">${cv(0)}${cv(1)}</div>`;
+    return `<div class="fig">${cv(!b ? 0 : frozen===undefined ? null : frozen)}</div>`;
+  }
   if(!b) return `<div class="fig single">${figureSVG(POSE[a],null,0,mu)}</div>`;
-  if(reducedMotion()) return `<div class="fig still">${figureSVG(POSE[a],null,0,mu)}${figureSVG(POSE[b],null,0,mu)}</div>`;
+  if(still) return `<div class="fig still">${figureSVG(POSE[a],null,0,mu)}${figureSVG(POSE[b],null,0,mu)}</div>`;
+  if(frozen!==undefined) return `<div class="fig">${figureSVG(POSE[a],POSE[b],frozen,mu)}</div>`;
   return `<div class="fig" data-fig="${data}">${figureSVG(POSE[a],POSE[b],0,mu)}</div>`;
 }
 // One loop animates every open panel: hold the start, glide to the end, hold, glide back.
 const FIG = {raf:0, last:0, s:0};
+// How far the camera backs off: wide enough for both poses of the movement, so the view doesn't pulse while it moves.
+function fitOf(a, b){
+  const pts = [[0,0]];
+  [0,1].forEach(s=>{ if(s && !b) return; const f = frame(POSE[a], b?POSE[b]:null, s); f.S.all.forEach(p=>pts.push([p[0]+f.dx-80, 91-(p[1]+f.dy)])) });
+  const xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  return {cx:(x0+x1)/2, cy:(y0+y1)/2, ext:Math.max(72, Math.max(y1-y0, (x1-x0)/1.45)*1.3+22)};
+}
+function draw3D(cv, s){
+  const [a,b,mu] = JSON.parse(decodeURIComponent(cv.dataset.fig)), az = azOf(cv.dataset.ex);
+  const key = s.toFixed(3)+"|"+az.toFixed(3); if(cv._key===key) return; cv._key = key;
+  const f = frame(POSE[a], b?POSE[b]:null, s);
+  if(!cv._fit) cv._fit = fitOf(a,b);
+  D3.mod.draw(cv, {S:f.S, dx:f.dx, dy:f.dy, P:f.P, mu, az, fit:cv._fit});
+}
+function drawFigures(){
+  document.querySelectorAll("canvas.fig3d").forEach(cv=>{ draw3D(cv, cv.dataset.s!==undefined ? +cv.dataset.s : FIG.s) });
+  document.querySelectorAll(".fig[data-fig]").forEach(el=>{
+    const [a,b,mu] = JSON.parse(decodeURIComponent(el.dataset.fig)); el.innerHTML = figureSVG(POSE[a],POSE[b],FIG.s,mu);
+  });
+}
 function figTick(now){
-  const els = document.querySelectorAll(".fig[data-fig]");
-  if(!els.length){ FIG.raf=0; return }
+  if(!document.querySelector(".fig[data-fig], canvas.fig3d")){ FIG.raf=0; return }
   if(now-FIG.last > 33){
     FIG.last = now;
-    const c = (now % 3400) / 3400, u = c<.15 ? 0 : c<.5 ? (c-.15)/.35 : c<.65 ? 1 : 1-(c-.65)/.35, s = u*u*(3-2*u);
-    FIG.s = s;
-    els.forEach(el=>{ const [a,b,mu] = JSON.parse(decodeURIComponent(el.dataset.fig)); el.innerHTML = figureSVG(POSE[a],POSE[b],s,mu) });
+    const c = (now % 3400) / 3400, u = c<.15 ? 0 : c<.5 ? (c-.15)/.35 : c<.65 ? 1 : 1-(c-.65)/.35;
+    FIG.s = u*u*(3-2*u);
+    drawFigures();
   }
   FIG.raf = requestAnimationFrame(figTick);
 }
-function startFigures(){ if(!FIG.raf && document.querySelector(".fig[data-fig]")) FIG.raf = requestAnimationFrame(figTick) }
+function startFigures(){
+  if(document.querySelector("canvas.fig3d")) drawFigures();
+  if(!FIG.raf && document.querySelector(".fig[data-fig], canvas.fig3d")) FIG.raf = requestAnimationFrame(figTick);
+}
+// Drag a 3D figure sideways to turn it. Vertical drags still scroll the page.
+let drag = null;
+document.addEventListener("pointerdown", ev=>{ const cv = ev.target.closest && ev.target.closest("canvas.fig3d"); if(cv){ drag = {cv, x:ev.clientX, az:azOf(cv.dataset.ex)}; cv.setPointerCapture(ev.pointerId) } });
+document.addEventListener("pointermove", ev=>{ if(drag){ D3.az.set(drag.cv.dataset.ex, drag.az + (ev.clientX-drag.x)*.012); drawFigures() } });
+document.addEventListener("pointerup", ()=>{ drag = null });
 
 /* ---------- Storage: this device only (localStorage), with backup export/import ---------- */
 const KEY = {data:"gravity-log:data", draft:"gravity-log:draft", backup:"gravity-log:last-backup"};
@@ -756,9 +802,9 @@ function showPanel(ex, e, sp){
     ? `<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/${id}?rel=0&playsinline=1" title="${esc(sp.name)} video" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`
     : `<button type="button" class="btn ghost" data-act="video" data-key="${esc(key)}">▶ Load video (needs internet)</button>`;
   return `<div class="panel">
-    ${visualHTML(sp.poses, mu, ui.frozen.get(ex))}
-    ${dynamic && !reducedMotion()?`<button type="button" class="tbtn" data-act="pause" data-ex="${ex}">${ui.frozen.has(ex)?"▶ Play":"⏸ Pause"}</button>`:""}
-    <div class="sub">${dynamic?"Start and end of the movement, side view.":"Hold position, side view."}${mu.main.length?` Main muscles in red: ${mu.main.map(k=>MUSCLE_NAME[k]).join(", ")}.`:""}${mu.also.length?` Also working, in amber: ${mu.also.map(k=>MUSCLE_NAME[k]).join(", ")}.`:""} A simplified sketch; follow the cue above.</div>
+    ${visualHTML(sp.poses, mu, ui.frozen.get(ex), ex)}
+    <div class="tools">${dynamic && !reducedMotion()?`<button type="button" class="tbtn" data-act="pause" data-ex="${ex}">${ui.frozen.has(ex)?"▶ Play":"⏸ Pause"}</button>`:""}${D3.state==="ready"?`<button type="button" class="tbtn" data-act="turn" data-ex="${ex}">↻ Turn</button>`:""}</div>
+    <div class="sub">${dynamic?"Start and end of the movement":"Hold position"}${D3.state==="ready"?". Drag the figure or tap Turn to see it from another angle.":", side view."}${mu.main.length?` Main muscles in red: ${mu.main.map(k=>MUSCLE_NAME[k]).join(", ")}.`:""}${mu.also.length?` Also working, in amber: ${mu.also.map(k=>MUSCLE_NAME[k]).join(", ")}.`:""} A simplified model; follow the cue above.</div>
     ${video}
     <div class="sub">${id?`<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener">Open on YouTube</a> · `:""}<a href="${ytSearch(sp.name)}" target="_blank" rel="noopener">Search YouTube for ${esc(sp.name)}</a></div>
   </div>`;
@@ -974,7 +1020,8 @@ document.addEventListener("click", async ev=>{
   const a=b.dataset.act, ex=b.dataset.ex, i=+b.dataset.i;
   if(a==="inc"||a==="dec"){ const e=draft.entries[ex]; e.sets[i]=Math.max(0,Number(e.sets[i])+(a==="inc"?1:-1)*Number(b.dataset.step)); saveDraft(); render() }
   else if(a==="done"){ const e=draft.entries[ex]; e.done[i]=!e.done[i]; saveDraft(); render(); if(e.done[i]) startTimer() }
-  else if(a==="show"){ ui.show.has(ex) ? ui.show.delete(ex) : ui.show.add(ex); render() }
+  else if(a==="show"){ ui.show.has(ex) ? ui.show.delete(ex) : ui.show.add(ex); load3D(); render() }
+  else if(a==="turn"){ const v = D3.views, i = v.findIndex(x=>Math.abs(x-azOf(ex))<.05); D3.az.set(ex, v[(i+1)%v.length]); drawFigures() }
   else if(a==="pause"){ ui.frozen.has(ex) ? ui.frozen.delete(ex) : ui.frozen.set(ex, FIG.s); render() }
   else if(a==="swap"){ ui.swap.has(ex) ? ui.swap.delete(ex) : ui.swap.add(ex); render() }
   else if(a==="missing"){ const k=b.dataset.k, m=draft.missing; m.includes(k) ? m.splice(m.indexOf(k),1) : m.push(k); saveDraft(); render() }
