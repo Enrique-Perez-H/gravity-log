@@ -558,20 +558,22 @@ function figureSVG(PA, PB, s, mu){
   </svg>`;
 }
 const reducedMotion = () => window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-function visualHTML(poses, mu){
+function visualHTML(poses, mu, frozen){
   const [a,b] = poses, data = encodeURIComponent(JSON.stringify([a,b||null,mu]));
+  if(b && frozen!==undefined) return `<div class="fig">${figureSVG(POSE[a],POSE[b],frozen,mu)}</div>`;
   if(!b) return `<div class="fig single">${figureSVG(POSE[a],null,0,mu)}</div>`;
   if(reducedMotion()) return `<div class="fig still">${figureSVG(POSE[a],null,0,mu)}${figureSVG(POSE[b],null,0,mu)}</div>`;
   return `<div class="fig" data-fig="${data}">${figureSVG(POSE[a],POSE[b],0,mu)}</div>`;
 }
 // One loop animates every open panel: hold the start, glide to the end, hold, glide back.
-const FIG = {raf:0, last:0};
+const FIG = {raf:0, last:0, s:0};
 function figTick(now){
   const els = document.querySelectorAll(".fig[data-fig]");
   if(!els.length){ FIG.raf=0; return }
   if(now-FIG.last > 33){
     FIG.last = now;
     const c = (now % 3400) / 3400, u = c<.15 ? 0 : c<.5 ? (c-.15)/.35 : c<.65 ? 1 : 1-(c-.65)/.35, s = u*u*(3-2*u);
+    FIG.s = s;
     els.forEach(el=>{ const [a,b,mu] = JSON.parse(decodeURIComponent(el.dataset.fig)); el.innerHTML = figureSVG(POSE[a],POSE[b],s,mu) });
   }
   FIG.raf = requestAnimationFrame(figTick);
@@ -730,7 +732,7 @@ function render(){
   startFigures();
 }
 
-const ui = {show:new Set(), swap:new Set(), video:new Set()};
+const ui = {show:new Set(), swap:new Set(), video:new Set(), frozen:new Map()};
 const ytSearch = name => "https://www.youtube.com/results?search_query="+encodeURIComponent(name+" calisthenics tutorial");
 function swapPanel(ex, e, sp){
   const chips = Object.entries(EQ).map(([k,t])=>`<button type="button" class="chip" data-act="missing" data-k="${k}" aria-pressed="${draft.missing.includes(k)}">${esc(t)}</button>`).join("");
@@ -754,7 +756,8 @@ function showPanel(ex, e, sp){
     ? `<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/${id}?rel=0&playsinline=1" title="${esc(sp.name)} video" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`
     : `<button type="button" class="btn ghost" data-act="video" data-key="${esc(key)}">▶ Load video (needs internet)</button>`;
   return `<div class="panel">
-    ${visualHTML(sp.poses, mu)}
+    ${visualHTML(sp.poses, mu, ui.frozen.get(ex))}
+    ${dynamic && !reducedMotion()?`<button type="button" class="tbtn" data-act="pause" data-ex="${ex}">${ui.frozen.has(ex)?"▶ Play":"⏸ Pause"}</button>`:""}
     <div class="sub">${dynamic?"Start and end of the movement, side view.":"Hold position, side view."}${mu.main.length?` Main muscles in red: ${mu.main.map(k=>MUSCLE_NAME[k]).join(", ")}.`:""}${mu.also.length?` Also working, in amber: ${mu.also.map(k=>MUSCLE_NAME[k]).join(", ")}.`:""} A simplified sketch; follow the cue above.</div>
     ${video}
     <div class="sub">${id?`<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener">Open on YouTube</a> · `:""}<a href="${ytSearch(sp.name)}" target="_blank" rel="noopener">Search YouTube for ${esc(sp.name)}</a></div>
@@ -972,6 +975,7 @@ document.addEventListener("click", async ev=>{
   if(a==="inc"||a==="dec"){ const e=draft.entries[ex]; e.sets[i]=Math.max(0,Number(e.sets[i])+(a==="inc"?1:-1)*Number(b.dataset.step)); saveDraft(); render() }
   else if(a==="done"){ const e=draft.entries[ex]; e.done[i]=!e.done[i]; saveDraft(); render(); if(e.done[i]) startTimer() }
   else if(a==="show"){ ui.show.has(ex) ? ui.show.delete(ex) : ui.show.add(ex); render() }
+  else if(a==="pause"){ ui.frozen.has(ex) ? ui.frozen.delete(ex) : ui.frozen.set(ex, FIG.s); render() }
   else if(a==="swap"){ ui.swap.has(ex) ? ui.swap.delete(ex) : ui.swap.add(ex); render() }
   else if(a==="missing"){ const k=b.dataset.k, m=draft.missing; m.includes(k) ? m.splice(m.indexOf(k),1) : m.push(k); saveDraft(); render() }
   else if(a==="pick"){
