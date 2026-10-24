@@ -19,7 +19,7 @@
 :root{
   --bg:#EEF1F0; --surface:#FFFFFF; --ink:#18201D; --muted:#5B6661; --line:#D5DCD9;
   --accent:#2F45C8; --accent-ink:#FFFFFF; --accent-soft:#E3E7FB;
-  --skin:#E6D2C2; --skin-line:#B79F8C;
+  --skin:#E6D2C2; --skin-line:#B79F8C; --mus-main:#D8452F; --mus-also:#F0A93E;
   --chalk:#B7791F; --chalk-soft:#F6EBD9; --good:#1F7A4D; --good-soft:#DDF1E6; --warn:#A8521E; --warn-soft:#F8E4D8;
   --display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
   --body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -28,12 +28,12 @@
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#111614; --surface:#1A211E; --ink:#E7EDEA; --muted:#9AA6A0; --line:#2C3632;
   --accent:#8C9CFF; --accent-ink:#0E1330; --accent-soft:#232A52;
-  --skin:#6B5F57; --skin-line:#8A7B70;
+  --skin:#6B5F57; --skin-line:#8A7B70; --mus-main:#FF7358; --mus-also:#E9B04F;
   --chalk:#E2B05E; --chalk-soft:#3A2F1C; --good:#5CC98F; --good-soft:#173A28; --warn:#F0A070; --warn-soft:#41291B; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#111614; --surface:#1A211E; --ink:#E7EDEA; --muted:#9AA6A0; --line:#2C3632;
   --accent:#8C9CFF; --accent-ink:#0E1330; --accent-soft:#232A52;
-  --skin:#6B5F57; --skin-line:#8A7B70;
+  --skin:#6B5F57; --skin-line:#8A7B70; --mus-main:#FF7358; --mus-also:#E9B04F;
   --chalk:#E2B05E; --chalk-soft:#3A2F1C; --good:#5CC98F; --good-soft:#173A28; --warn:#F0A070; --warn-soft:#41291B; color-scheme:dark}
 *{box-sizing:border-box}
 :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -142,19 +142,19 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .alt-opt{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
 .alt-opt .cue{grid-column:1/-1}
 .fig{display:grid;max-width:340px}
-.fig svg{grid-area:1/1;width:100%;height:auto;background:var(--bg);border-radius:10px}
+.fig svg{width:100%;height:auto;background:var(--bg);border-radius:10px}
 .fig .skin{fill:var(--skin);stroke:var(--skin-line);stroke-width:.6;stroke-linejoin:round}
 .fig .skin.far{opacity:.55}
-.fig .mus{fill:var(--warn);opacity:.85;stroke:none}
+.fig .mus{stroke:none}
+.fig .mus.main{fill:var(--mus-main)}
+.fig .mus.also{fill:var(--mus-also);opacity:.9}
+.fig .sep{stroke:var(--skin-line);stroke-width:.8;stroke-linecap:round}
+.fig .shadow{fill:var(--ink);opacity:.1}
 .fig .floor{stroke:var(--line);stroke-width:1.5}
 .fig .prop{stroke:var(--accent);stroke-width:2.6;stroke-linecap:round}
 .fig .thin{stroke-width:1;opacity:.5}
 .fig .wall{fill:var(--line)}
-@keyframes figA{0%,35%{opacity:1}50%,85%{opacity:0}100%{opacity:1}}
-@keyframes figB{0%,35%{opacity:0}50%,85%{opacity:1}100%{opacity:0}}
-.fig:not(.single) .a{animation:figA 2.4s ease-in-out infinite}
-.fig:not(.single) .b{animation:figB 2.4s ease-in-out infinite}
-@media (prefers-reduced-motion:reduce){.fig:not(.single){grid-template-columns:1fr 1fr;gap:6px}.fig:not(.single) svg{grid-area:auto;animation:none!important;opacity:1!important}}
+.fig.still{grid-template-columns:1fr 1fr;gap:6px}
 .video{position:relative;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:var(--bg)}
 .video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 @media (prefers-reduced-motion:no-preference){nav.tabs button,.tick,.check .box{transition:background .15s,color .15s}}
@@ -471,16 +471,21 @@ const LEN = {T:22, UA:11, FA:10, TH:15, SH:15, H:8};
 const pt = (p,deg,len) => { const r = deg*Math.PI/180; return [p[0]+Math.cos(r)*len, p[1]+Math.sin(r)*len] };
 const xy = p => p.map(v=>v.toFixed(1)).join(",");
 const line = (pts,op) => `<polyline points="${pts.map(xy).join(" ")}" opacity="${op}"/>`;
-// Working muscles per exercise, drawn on the body in colour. Alternatives use the muscles of the exercise they replace.
+// Working muscles per exercise: main movers and supporting muscles, drawn in two colours.
+// Alternatives use the muscles of the exercise they replace.
 const MUSCLE_NAME = {delt:"shoulders",chest:"chest",back:"back",arm:"arms",fore:"forearms",core:"core",glute:"glutes",thigh:"thighs",calf:"calves"};
 const MUSCLES = {
-  handstand:["delt","arm","fore","core"], pullup:["back","arm","fore"], dip:["chest","delt","arm"], pushup:["chest","delt","arm","core"],
-  row:["back","arm","fore"], pike:["delt","arm","core"], frontlever:["back","core","arm"], planche:["delt","chest","core","fore"],
-  lsit:["core","thigh","arm","delt"], hollow:["core","thigh"], legraise:["core","thigh","fore"], squat:["thigh","glute","calf"], hinge:["glute","thigh","calf"]
+  handstand:{main:["delt"],also:["arm","fore","core"]}, pullup:{main:["back","arm"],also:["fore"]},
+  dip:{main:["chest","arm"],also:["delt"]}, pushup:{main:["chest"],also:["delt","arm","core"]},
+  row:{main:["back"],also:["arm","fore"]}, pike:{main:["delt"],also:["arm","core"]},
+  frontlever:{main:["back","core"],also:["arm"]}, planche:{main:["delt","core"],also:["chest","fore"]},
+  lsit:{main:["core","thigh"],also:["arm","delt"]}, hollow:{main:["core"],also:["thigh"]},
+  legraise:{main:["core","thigh"],also:["fore"]}, squat:{main:["thigh","glute"],also:["calf"]},
+  hinge:{main:["glute","thigh"],also:["calf"]}
 };
 const ALT_EX = {};
 Object.entries(ALTMAP).forEach(([ex,groups])=>groups.forEach(([,ids])=>ids.forEach(id=>{ if(!ALT_EX[id]) ALT_EX[id]=ex })));
-const musclesFor = (ex,e) => MUSCLES[e && e.sub ? (ALT_EX[e.sub]||ex) : ex] || [];
+const musclesFor = (ex,e) => MUSCLES[e && e.sub ? (ALT_EX[e.sub]||ex) : ex] || {main:[],also:[]};
 
 // A body segment as a smooth tapered shape between two joints; t0..t1 picks a stretch of it, w is the width at the ends and mid at the middle.
 function segPath(a,b,w0,wm,w1,t0=0,t1=1){
@@ -492,50 +497,86 @@ function segPath(a,b,w0,wm,w1,t0=0,t1=1){
   return `M${f(p0)}Q${f(pm)} ${f(p1)}L${f(q1)}Q${f(qm)} ${f(q0)}Z`;
 }
 const dot = (p,r,cls) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${r}" class="${cls}"/>`;
-function figureSVG(P, cls, muscles){
-  // Build the figure around the origin, then slide it so it stands on the floor (or the hands meet the bar) and sits centred.
+// Angles blend along the shortest way round, so a pose can move smoothly into the next one.
+const lerp = (a,b,s) => a+(b-a)*s;
+const lerpAng = (a,b,s) => a+(((b-a+540)%360)-180)*s;
+const headAng = P => P.h===undefined ? P.t+180 : P.h;
+function solve(P){
   const n=[0,0], hip=pt(n,P.t,LEN.T), el=pt(n,P.a[0],LEN.UA), hand=pt(el,P.a[1],LEN.FA);
-  const kn=pt(hip,P.l[0],LEN.TH), ft=pt(kn,P.l[1],LEN.SH), head=pt(n,P.h===undefined?P.t+180:P.h,LEN.H);
+  const kn=pt(hip,P.l[0],LEN.TH), ft=pt(kn,P.l[1],LEN.SH), head=pt(n,headAng(P),LEN.H);
   const k2=P.l2 ? pt(hip,P.l2[0],LEN.TH) : null, f2=P.l2 ? pt(k2,P.l2[1],LEN.SH) : null;
   const all=[n,hip,el,hand,kn,ft,head].concat(k2?[k2,f2]:[]);
+  // Where to slide the figure: onto the floor (or the hands onto the bar), and centred.
   const dy = P.f==="floor" ? 91-Math.max(...all.map(p=>p[1])) : P.f-hand[1];
   const xs=all.map(p=>p[0]), dx = 80-(Math.min(...xs)+Math.max(...xs))/2;
+  return {n,hip,el,hand,kn,ft,head,k2,f2,all,dx,dy};
+}
+function blend(A,B,s){
+  const l2 = (A.l2||B.l2) ? [lerpAng((A.l2||A.l)[0],(B.l2||B.l)[0],s), lerpAng((A.l2||A.l)[1],(B.l2||B.l)[1],s)] : null;
+  return {t:lerpAng(A.t,B.t,s), a:[lerpAng(A.a[0],B.a[0],s),lerpAng(A.a[1],B.a[1],s)], l:[lerpAng(A.l[0],B.l[0],s),lerpAng(A.l[1],B.l[1],s)],
+    l2, h:lerpAng(headAng(A),headAng(B),s), f:A.f, p:A.p};
+}
+function figureSVG(PA, PB, s, mu){
+  const P = PB ? blend(PA,PB,s) : PA, S = solve(P);
+  let dx=S.dx, dy=S.dy;
+  if(PB){ const a=solve(PA), b=solve(PB); dx=lerp(a.dx,b.dx,s); if(PA.f!==PB.f) dy=lerp(a.dy,b.dy,s) }
   const mv = p => [p[0]+dx, p[1]+dy];
-  const [N,H,E,Hd,K,F,Hh] = [n,hip,el,hand,kn,ft,head].map(mv);
+  const [N,H,E,Hd,K,F,Hh] = [S.n,S.hip,S.el,S.hand,S.kn,S.ft,S.head].map(mv), all=S.all;
   const props = (P.p||[]).map(([k,v])=>{
     if(k==="bar") return `<line x1="40" x2="120" y1="18" y2="18" class="prop"/><line x1="40" x2="40" y1="18" y2="91" class="prop thin"/><line x1="120" x2="120" y1="18" y2="91" class="prop thin"/>`;
     if(k==="wall"){ const x=Math.max(...all.map(p=>p[0]+dx))+4; return `<rect x="${x.toFixed(1)}" y="4" width="5" height="87" class="wall"/>` }
     if(k==="sup"){ const w = v==="par"?9:14, y=Hd[1], x=Hd[0]; return `<line x1="${x-w}" x2="${x+w}" y1="${y}" y2="${y}" class="prop"/><line x1="${x-w+2}" x2="${x-w+2}" y1="${y}" y2="91" class="prop thin"/><line x1="${x+w-2}" x2="${x+w-2}" y1="${y}" y2="91" class="prop thin"/>` }
     return "";
   }).join("");
-  // Skin first, then the working muscles on top of the segments they belong to.
-  const body = [], mus = [], m = new Set(muscles||[]);
+  // Skin first, then the muscles on top of the segments they belong to: supporting ones under the main ones.
+  const body=[], mus=[], main=new Set(mu.main), also=new Set(mu.also);
   const seg = (a,b,w0,wm,w1,t0,t1,c,store) => store.push(`<path d="${segPath(a,b,w0,wm,w1,t0,t1)}" class="${c}"/>`);
-  const limbs = (hp,kk,ff,store,c) => { seg(hp,kk,8,9,6,0,1,c,store); seg(kk,ff,6,6.6,3.8,0,1,c,store); store.push(dot(ff,2.4,c)) };
-  if(k2){ const K2=mv(k2), F2=mv(f2); limbs(H,K2,F2,body,"skin far"); }
-  seg(N,H,10,7.4,8,0,1,"skin",body); body.push(dot(N,4.6,"skin"), dot(H,4.2,"skin"));
-  limbs(H,K,F,body,"skin");
-  seg(N,E,5.4,5.8,4.6,0,1,"skin",body); seg(E,Hd,4.6,4.4,3,0,1,"skin",body); body.push(dot(Hd,2.2,"skin"), dot(E,2.3,"skin"));
+  const limbs = (hp,kk,ff,c) => { seg(hp,kk,8.4,9.4,6.4,0,1,c,body); seg(kk,ff,6.2,7,3.8,0,1,c,body); body.push(dot(ff,2.5,c)) };
+  if(S.k2){ limbs(H,mv(S.k2),mv(S.f2),"skin far") }
+  seg(N,H,11,7.6,8.4,0,1,"skin",body); body.push(dot(N,5,"skin"), dot(H,4.4,"skin"));
+  limbs(H,K,F,"skin");
+  seg(N,E,5.6,6.2,4.8,0,1,"skin",body); seg(E,Hd,4.8,5,3,0,1,"skin",body); body.push(dot(E,2.4,"skin"), dot(Hd,2.5,"skin"));
   body.push(`<ellipse cx="${Hh[0].toFixed(1)}" cy="${Hh[1].toFixed(1)}" rx="5.2" ry="5.8" class="skin"/>`);
-  if(m.has("delt"))  { mus.push(dot(N,4.8,"mus")); seg(N,E,6,6.4,5,0,.55,"mus",mus) }
-  if(m.has("arm"))   seg(N,E,5.8,6.2,5,.3,1,"mus",mus);
-  if(m.has("fore"))  seg(E,Hd,4.9,4.7,3.2,0,.95,"mus",mus);
-  if(m.has("chest")) seg(N,H,9.6,8.6,8,.08,.48,"mus",mus);
-  if(m.has("back"))  seg(N,H,9.6,8.2,7,.2,.75,"mus",mus);
-  if(m.has("core"))  seg(N,H,8,6.8,7.6,.5,1,"mus",mus);
-  if(m.has("glute")) mus.push(dot(H,4.6,"mus"));
-  if(m.has("thigh")) seg(H,K,8.4,9.4,6.4,.12,.95,"mus",mus);
-  if(m.has("calf"))  seg(K,F,6.4,7,4,.05,.8,"mus",mus);
-  return `<svg class="${cls}" viewBox="0 0 160 100" aria-hidden="true">
+  const m = k => main.has(k) ? "mus main" : also.has(k) ? "mus also" : null;
+  let c;
+  if((c=m("delt")))  { mus.push(dot(N,5,c)); seg(N,E,6.4,6.8,5.2,0,.5,c,mus) }
+  if((c=m("arm")))   seg(N,E,5.8,7.4,4.8,.25,1,c,mus);
+  if((c=m("fore")))  seg(E,Hd,5.2,5.6,3.2,0,.95,c,mus);
+  if((c=m("chest"))) seg(N,H,10.4,9.4,8,.05,.5,c,mus);
+  if((c=m("back")))  seg(N,H,11,8,5.6,.08,.78,c,mus);
+  if((c=m("core")))  { seg(N,H,8.4,7.2,7.6,.5,1,c,mus); [.6,.72,.84].forEach(t=>{ const p=[N[0]+(H[0]-N[0])*t,N[1]+(H[1]-N[1])*t], l=Math.hypot(H[0]-N[0],H[1]-N[1])||1, nx=-(H[1]-N[1])/l*2.6, ny=(H[0]-N[0])/l*2.6; mus.push(`<line x1="${(p[0]-nx).toFixed(1)}" y1="${(p[1]-ny).toFixed(1)}" x2="${(p[0]+nx).toFixed(1)}" y2="${(p[1]+ny).toFixed(1)}" class="sep"/>`) }) }
+  if((c=m("glute"))) mus.push(dot(H,5,c));
+  if((c=m("thigh"))) seg(H,K,8.6,10.2,6.6,.1,.95,c,mus);
+  if((c=m("calf")))  seg(K,F,6.6,8,4,.05,.8,c,mus);
+  // The also-muscles go first so a main muscle covering the same ground stays on top.
+  mus.sort((x,y)=>(y.includes("also")?1:0)-(x.includes("also")?1:0));
+  const mid=(Math.min(...all.map(p=>p[0]))+Math.max(...all.map(p=>p[0])))/2+dx;
+  return `<svg viewBox="0 0 160 100" aria-hidden="true">
+    <ellipse cx="${mid.toFixed(1)}" cy="91.5" rx="26" ry="2.4" class="shadow"/>
     <line x1="4" x2="156" y1="91" y2="91" class="floor"/>${props}
     <g class="fig-body">${body.join("")}${mus.join("")}</g>
   </svg>`;
 }
-function visualHTML(poses, muscles){
-  const [a,b] = poses;
-  if(!b) return `<div class="fig single">${figureSVG(POSE[a],"a",muscles)}</div>`;
-  return `<div class="fig">${figureSVG(POSE[a],"a",muscles)}${figureSVG(POSE[b],"b",muscles)}</div>`;
+const reducedMotion = () => window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+function visualHTML(poses, mu){
+  const [a,b] = poses, data = encodeURIComponent(JSON.stringify([a,b||null,mu]));
+  if(!b) return `<div class="fig single">${figureSVG(POSE[a],null,0,mu)}</div>`;
+  if(reducedMotion()) return `<div class="fig still">${figureSVG(POSE[a],null,0,mu)}${figureSVG(POSE[b],null,0,mu)}</div>`;
+  return `<div class="fig" data-fig="${data}">${figureSVG(POSE[a],POSE[b],0,mu)}</div>`;
 }
+// One loop animates every open panel: hold the start, glide to the end, hold, glide back.
+const FIG = {raf:0, last:0};
+function figTick(now){
+  const els = document.querySelectorAll(".fig[data-fig]");
+  if(!els.length){ FIG.raf=0; return }
+  if(now-FIG.last > 33){
+    FIG.last = now;
+    const c = (now % 3400) / 3400, u = c<.15 ? 0 : c<.5 ? (c-.15)/.35 : c<.65 ? 1 : 1-(c-.65)/.35, s = u*u*(3-2*u);
+    els.forEach(el=>{ const [a,b,mu] = JSON.parse(decodeURIComponent(el.dataset.fig)); el.innerHTML = figureSVG(POSE[a],POSE[b],s,mu) });
+  }
+  FIG.raf = requestAnimationFrame(figTick);
+}
+function startFigures(){ if(!FIG.raf && document.querySelector(".fig[data-fig]")) FIG.raf = requestAnimationFrame(figTick) }
 
 /* ---------- Storage: this device only (localStorage), with backup export/import ---------- */
 const KEY = {data:"gravity-log:data", draft:"gravity-log:draft", backup:"gravity-log:last-backup"};
@@ -686,6 +727,7 @@ function render(){
   const v = document.getElementById("view");
   if(!S.loaded){ v.innerHTML = '<p class="empty">Loading your training log…</p>'; return }
   v.innerHTML = tab==="train" ? viewTrain() : tab==="progress" ? viewProgress() : viewProgram();
+  startFigures();
 }
 
 const ui = {show:new Set(), swap:new Set(), video:new Set()};
@@ -713,7 +755,7 @@ function showPanel(ex, e, sp){
     : `<button type="button" class="btn ghost" data-act="video" data-key="${esc(key)}">▶ Load video (needs internet)</button>`;
   return `<div class="panel">
     ${visualHTML(sp.poses, mu)}
-    <div class="sub">${dynamic?"Start and end of the movement, side view.":"Hold position, side view."}${mu.length?" Working muscles in orange: "+mu.map(k=>MUSCLE_NAME[k]).join(", ")+".":""} A simplified sketch; follow the cue above.</div>
+    <div class="sub">${dynamic?"Start and end of the movement, side view.":"Hold position, side view."}${mu.main.length?` Main muscles in red: ${mu.main.map(k=>MUSCLE_NAME[k]).join(", ")}.`:""}${mu.also.length?` Also working, in amber: ${mu.also.map(k=>MUSCLE_NAME[k]).join(", ")}.`:""} A simplified sketch; follow the cue above.</div>
     ${video}
     <div class="sub">${id?`<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener">Open on YouTube</a> · `:""}<a href="${ytSearch(sp.name)}" target="_blank" rel="noopener">Search YouTube for ${esc(sp.name)}</a></div>
   </div>`;
