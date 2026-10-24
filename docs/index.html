@@ -19,6 +19,7 @@
 :root{
   --bg:#EEF1F0; --surface:#FFFFFF; --ink:#18201D; --muted:#5B6661; --line:#D5DCD9;
   --accent:#2F45C8; --accent-ink:#FFFFFF; --accent-soft:#E3E7FB;
+  --skin:#E6D2C2; --skin-line:#B79F8C;
   --chalk:#B7791F; --chalk-soft:#F6EBD9; --good:#1F7A4D; --good-soft:#DDF1E6; --warn:#A8521E; --warn-soft:#F8E4D8;
   --display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
   --body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -27,10 +28,12 @@
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#111614; --surface:#1A211E; --ink:#E7EDEA; --muted:#9AA6A0; --line:#2C3632;
   --accent:#8C9CFF; --accent-ink:#0E1330; --accent-soft:#232A52;
+  --skin:#6B5F57; --skin-line:#8A7B70;
   --chalk:#E2B05E; --chalk-soft:#3A2F1C; --good:#5CC98F; --good-soft:#173A28; --warn:#F0A070; --warn-soft:#41291B; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#111614; --surface:#1A211E; --ink:#E7EDEA; --muted:#9AA6A0; --line:#2C3632;
   --accent:#8C9CFF; --accent-ink:#0E1330; --accent-soft:#232A52;
+  --skin:#6B5F57; --skin-line:#8A7B70;
   --chalk:#E2B05E; --chalk-soft:#3A2F1C; --good:#5CC98F; --good-soft:#173A28; --warn:#F0A070; --warn-soft:#41291B; color-scheme:dark}
 *{box-sizing:border-box}
 :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -140,8 +143,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .alt-opt .cue{grid-column:1/-1}
 .fig{display:grid;max-width:340px}
 .fig svg{grid-area:1/1;width:100%;height:auto;background:var(--bg);border-radius:10px}
-.fig polyline{fill:none;stroke:var(--ink);stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}
-.fig .head{fill:var(--surface);stroke:var(--ink);stroke-width:2.6}
+.fig .skin{fill:var(--skin);stroke:var(--skin-line);stroke-width:.6;stroke-linejoin:round}
+.fig .skin.far{opacity:.55}
+.fig .mus{fill:var(--warn);opacity:.85;stroke:none}
 .fig .floor{stroke:var(--line);stroke-width:1.5}
 .fig .prop{stroke:var(--accent);stroke-width:2.6;stroke-linecap:round}
 .fig .thin{stroke-width:1;opacity:.5}
@@ -446,7 +450,7 @@ const VIS = {
 // YouTube video ids, by exercise and level ("*" = every level). A level with no id gets a YouTube search link
 // instead. Ids are found by search and not verified; if one is wrong or can't be embedded, replace it here.
 const VIDEO = {
-  handstand:{0:"lzGzDMzTUQE",1:"lzGzDMzTUQE",2:"lzGzDMzTUQE",3:"Z1BEEzg5L6Q",4:"Z1BEEzg5L6Q",5:"rQlBhbZr17g",6:"XtQC5F2dY1s"},
+  handstand:{0:"lzGzDMzTUQE",1:"pzf6nfzc4lE",2:"pzf6nfzc4lE",3:"Z1BEEzg5L6Q",4:"Z1BEEzg5L6Q",5:"rQlBhbZr17g",6:"XtQC5F2dY1s"},
   pullup:{"*":"EyJuVR_G6EY",4:"_LGLKUiQH5k",5:"bEp2oBM47C0",6:"mTJHClMQPM8",7:"mTJHClMQPM8"},
   dip:{"*":"1bjuTshW5TA"},
   pushup:{"*":"C_hEJphpqLU",5:"MxVbNel13Ek",6:"yKdMPaTpK9k",7:"yKdMPaTpK9k"},
@@ -467,33 +471,70 @@ const LEN = {T:22, UA:11, FA:10, TH:15, SH:15, H:8};
 const pt = (p,deg,len) => { const r = deg*Math.PI/180; return [p[0]+Math.cos(r)*len, p[1]+Math.sin(r)*len] };
 const xy = p => p.map(v=>v.toFixed(1)).join(",");
 const line = (pts,op) => `<polyline points="${pts.map(xy).join(" ")}" opacity="${op}"/>`;
-function figureSVG(P, cls){
+// Working muscles per exercise, drawn on the body in colour. Alternatives use the muscles of the exercise they replace.
+const MUSCLE_NAME = {delt:"shoulders",chest:"chest",back:"back",arm:"arms",fore:"forearms",core:"core",glute:"glutes",thigh:"thighs",calf:"calves"};
+const MUSCLES = {
+  handstand:["delt","arm","fore","core"], pullup:["back","arm","fore"], dip:["chest","delt","arm"], pushup:["chest","delt","arm","core"],
+  row:["back","arm","fore"], pike:["delt","arm","core"], frontlever:["back","core","arm"], planche:["delt","chest","core","fore"],
+  lsit:["core","thigh","arm","delt"], hollow:["core","thigh"], legraise:["core","thigh","fore"], squat:["thigh","glute","calf"], hinge:["glute","thigh","calf"]
+};
+const ALT_EX = {};
+Object.entries(ALTMAP).forEach(([ex,groups])=>groups.forEach(([,ids])=>ids.forEach(id=>{ if(!ALT_EX[id]) ALT_EX[id]=ex })));
+const musclesFor = (ex,e) => MUSCLES[e && e.sub ? (ALT_EX[e.sub]||ex) : ex] || [];
+
+// A body segment as a smooth tapered shape between two joints; t0..t1 picks a stretch of it, w is the width at the ends and mid at the middle.
+function segPath(a,b,w0,wm,w1,t0=0,t1=1){
+  const len=Math.hypot(b[0]-a[0],b[1]-a[1])||1, ux=(b[0]-a[0])/len, uy=(b[1]-a[1])/len, nx=-uy, ny=ux;
+  const at=(t,w)=>{ const p=[a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]; return [[p[0]+nx*w/2,p[1]+ny*w/2],[p[0]-nx*w/2,p[1]-ny*w/2]] };
+  const wAt = t => t<.5 ? w0+(wm-w0)*t*2 : wm+(w1-wm)*(t-.5)*2, tm=(t0+t1)/2;
+  const [p0,q0]=at(t0,wAt(t0)), [pm,qm]=at(tm,wAt(tm)), [p1,q1]=at(t1,wAt(t1));
+  const f=p=>p.map(v=>v.toFixed(1)).join(" ");
+  return `M${f(p0)}Q${f(pm)} ${f(p1)}L${f(q1)}Q${f(qm)} ${f(q0)}Z`;
+}
+const dot = (p,r,cls) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${r}" class="${cls}"/>`;
+function figureSVG(P, cls, muscles){
   // Build the figure around the origin, then slide it so it stands on the floor (or the hands meet the bar) and sits centred.
   const n=[0,0], hip=pt(n,P.t,LEN.T), el=pt(n,P.a[0],LEN.UA), hand=pt(el,P.a[1],LEN.FA);
   const kn=pt(hip,P.l[0],LEN.TH), ft=pt(kn,P.l[1],LEN.SH), head=pt(n,P.h===undefined?P.t+180:P.h,LEN.H);
   const k2=P.l2 ? pt(hip,P.l2[0],LEN.TH) : null, f2=P.l2 ? pt(k2,P.l2[1],LEN.SH) : null;
   const all=[n,hip,el,hand,kn,ft,head].concat(k2?[k2,f2]:[]);
-  
   const dy = P.f==="floor" ? 91-Math.max(...all.map(p=>p[1])) : P.f-hand[1];
   const xs=all.map(p=>p[0]), dx = 80-(Math.min(...xs)+Math.max(...xs))/2;
   const mv = p => [p[0]+dx, p[1]+dy];
   const [N,H,E,Hd,K,F,Hh] = [n,hip,el,hand,kn,ft,head].map(mv);
-  const far = k2 ? line([H,mv(k2),mv(f2)],.45) : "";
   const props = (P.p||[]).map(([k,v])=>{
     if(k==="bar") return `<line x1="40" x2="120" y1="18" y2="18" class="prop"/><line x1="40" x2="40" y1="18" y2="91" class="prop thin"/><line x1="120" x2="120" y1="18" y2="91" class="prop thin"/>`;
     if(k==="wall"){ const x=Math.max(...all.map(p=>p[0]+dx))+4; return `<rect x="${x.toFixed(1)}" y="4" width="5" height="87" class="wall"/>` }
     if(k==="sup"){ const w = v==="par"?9:14, y=Hd[1], x=Hd[0]; return `<line x1="${x-w}" x2="${x+w}" y1="${y}" y2="${y}" class="prop"/><line x1="${x-w+2}" x2="${x-w+2}" y1="${y}" y2="91" class="prop thin"/><line x1="${x+w-2}" x2="${x+w-2}" y1="${y}" y2="91" class="prop thin"/>` }
     return "";
   }).join("");
+  // Skin first, then the working muscles on top of the segments they belong to.
+  const body = [], mus = [], m = new Set(muscles||[]);
+  const seg = (a,b,w0,wm,w1,t0,t1,c,store) => store.push(`<path d="${segPath(a,b,w0,wm,w1,t0,t1)}" class="${c}"/>`);
+  const limbs = (hp,kk,ff,store,c) => { seg(hp,kk,8,9,6,0,1,c,store); seg(kk,ff,6,6.6,3.8,0,1,c,store); store.push(dot(ff,2.4,c)) };
+  if(k2){ const K2=mv(k2), F2=mv(f2); limbs(H,K2,F2,body,"skin far"); }
+  seg(N,H,10,7.4,8,0,1,"skin",body); body.push(dot(N,4.6,"skin"), dot(H,4.2,"skin"));
+  limbs(H,K,F,body,"skin");
+  seg(N,E,5.4,5.8,4.6,0,1,"skin",body); seg(E,Hd,4.6,4.4,3,0,1,"skin",body); body.push(dot(Hd,2.2,"skin"), dot(E,2.3,"skin"));
+  body.push(`<ellipse cx="${Hh[0].toFixed(1)}" cy="${Hh[1].toFixed(1)}" rx="5.2" ry="5.8" class="skin"/>`);
+  if(m.has("delt"))  { mus.push(dot(N,4.8,"mus")); seg(N,E,6,6.4,5,0,.55,"mus",mus) }
+  if(m.has("arm"))   seg(N,E,5.8,6.2,5,.3,1,"mus",mus);
+  if(m.has("fore"))  seg(E,Hd,4.9,4.7,3.2,0,.95,"mus",mus);
+  if(m.has("chest")) seg(N,H,9.6,8.6,8,.08,.48,"mus",mus);
+  if(m.has("back"))  seg(N,H,9.6,8.2,7,.2,.75,"mus",mus);
+  if(m.has("core"))  seg(N,H,8,6.8,7.6,.5,1,"mus",mus);
+  if(m.has("glute")) mus.push(dot(H,4.6,"mus"));
+  if(m.has("thigh")) seg(H,K,8.4,9.4,6.4,.12,.95,"mus",mus);
+  if(m.has("calf"))  seg(K,F,6.4,7,4,.05,.8,"mus",mus);
   return `<svg class="${cls}" viewBox="0 0 160 100" aria-hidden="true">
     <line x1="4" x2="156" y1="91" y2="91" class="floor"/>${props}
-    <g class="fig-body">${far}${line([N,H],1)}${line([H,K,F],1)}${line([N,E,Hd],1)}<circle cx="${Hh[0].toFixed(1)}" cy="${Hh[1].toFixed(1)}" r="5" class="head"/></g>
+    <g class="fig-body">${body.join("")}${mus.join("")}</g>
   </svg>`;
 }
-function visualHTML(poses){
+function visualHTML(poses, muscles){
   const [a,b] = poses;
-  if(!b) return `<div class="fig single">${figureSVG(POSE[a],"a")}</div>`;
-  return `<div class="fig">${figureSVG(POSE[a],"a")}${figureSVG(POSE[b],"b")}</div>`;
+  if(!b) return `<div class="fig single">${figureSVG(POSE[a],"a",muscles)}</div>`;
+  return `<div class="fig">${figureSVG(POSE[a],"a",muscles)}${figureSVG(POSE[b],"b",muscles)}</div>`;
 }
 
 /* ---------- Storage: this device only (localStorage), with backup export/import ---------- */
@@ -666,13 +707,13 @@ function swapPanel(ex, e, sp){
 function showPanel(ex, e, sp){
   const key = e.sub ? "alt:"+e.sub : ex+":"+e.level;
   const id = e.sub ? null : videoOf(ex,e.level);
-  const dynamic = sp.poses.length>1;
+  const dynamic = sp.poses.length>1, mu = musclesFor(ex,e);
   const video = !id ? "" : ui.video.has(key)
     ? `<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/${id}?rel=0&playsinline=1" title="${esc(sp.name)} video" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`
     : `<button type="button" class="btn ghost" data-act="video" data-key="${esc(key)}">▶ Load video (needs internet)</button>`;
   return `<div class="panel">
-    ${visualHTML(sp.poses)}
-    <div class="sub">${dynamic?"Start and end of the movement, side view.":"Hold position, side view."} A simple sketch; follow the cue above.</div>
+    ${visualHTML(sp.poses, mu)}
+    <div class="sub">${dynamic?"Start and end of the movement, side view.":"Hold position, side view."}${mu.length?" Working muscles in orange: "+mu.map(k=>MUSCLE_NAME[k]).join(", ")+".":""} A simplified sketch; follow the cue above.</div>
     ${video}
     <div class="sub">${id?`<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener">Open on YouTube</a> · `:""}<a href="${ytSearch(sp.name)}" target="_blank" rel="noopener">Search YouTube for ${esc(sp.name)}</a></div>
   </div>`;
