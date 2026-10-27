@@ -70,7 +70,11 @@ The Routine tab holds the active routine. **Calisthenics** is the built-in one. 
   - You log the weight and reps of every set. Double progression suggests the next weight: when every set reaches the top of the range it adds 2.5 kg (2 kg for dumbbells) and starts at the bottom again.
   - Blocks are 5 weeks of training with one extra set on the main lifts from week 3, then a lighter week (2 sets at about 85% of the weight). The movement for each pattern rotates every block, and the Swap movement button changes it any time (it stays until you tap Back to auto-rotation).
   - Photos are from free-exercise-db; weights are in kg.
-- Cardio routines are planned.
+- **Cardio** is a plan that runs next to the strength routine, with its own sessions, history and weekly minutes. Inputs: sessions per week, session length (about 20, 35 or 50 minutes), goal (general health or fitness/VO2max), experience, activities (walking or hiking, running, or machines and swimming), low-impact only, and an optional age for a rough heart-rate range.
+  - Most sessions are easy (conversational, effort 3–4 of 10). Fitness plans add one or two interval sessions that grow from short sets to 4 × 4 minutes over weeks, with a built-in interval timer that vibrates at each change. Blocks are three weeks of building and one lighter week.
+  - You log minutes, effort (1–10), distance, average heart rate and rounds. Progress shows weekly moderate-equivalent minutes (hard minutes count double) against the WHO range of 150–300.
+  - Each rule has a link to the primary source (WHO guidelines, the trials and meta-analyses); popular Attia and Huberman figures are labelled as such, with a 2025 review that disputes Zone 2 as special.
+- When a lift shows no progress for three sessions, its card offers the next movement in one tap.
 
 ## Editing history
 
