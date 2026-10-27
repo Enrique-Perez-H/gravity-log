@@ -113,6 +113,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .last{font-family:var(--mono);font-size:.75rem;color:var(--muted)}
 .lv-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
 .lv-list li{display:grid;grid-template-columns:2em 1fr auto;gap:8px;align-items:center;padding:6px 8px;border-radius:8px;font-size:.88rem}
+.lv-btns{display:flex;gap:6px;align-items:center}
+.lv-list li .lv-panel{grid-column:1/-1}
 .lv-list li.cur{background:var(--accent-soft)}
 .lv-list li .k{font-family:var(--mono);font-size:.72rem;color:var(--muted)}
 .lv-list li .r{font-family:var(--mono);font-size:.72rem;color:var(--muted)}
@@ -123,6 +125,14 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .hist .row{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
 .hist .meta{font-family:var(--mono);font-size:.78rem}
 .timer{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:10;display:flex;gap:6px;align-items:center;background:var(--ink);color:var(--bg);border-radius:99px;padding:6px 6px 6px 14px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.ed{border-top:1px dashed var(--line);margin-top:10px;padding-top:10px;display:flex;flex-direction:column;gap:12px}
+.ed-top{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.ed input[type=date],.ed select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);max-width:100%}
+.ed-ex{border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.ed-h{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ed-sets{display:flex;gap:10px;flex-wrap:wrap}
+.ed-set{display:flex;flex-direction:column;gap:4px;font-size:.8rem}
+.ed-set input[type=number]{width:64px;font:500 1rem var(--mono);padding:6px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
 .hold{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;height:38px;min-width:42px;padding:0 8px;margin-left:6px;font:500 .85rem var(--mono);cursor:pointer}
 .hold.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .timer b{font:500 1rem var(--mono);min-width:3.2em;text-align:center}
@@ -617,7 +627,7 @@ function startFigures(){
   if(!FIG.raf && document.querySelector(".fig[data-fig], .fig[data-photo]")) FIG.raf = requestAnimationFrame(figTick);
 }
 /* ---------- Storage: this device only (localStorage), with backup export/import ---------- */
-const KEY = {data:"gravity-log:data", draft:"gravity-log:draft", backup:"gravity-log:last-backup"};
+const KEY = {data:"gravity-log:data", draft:"gravity-log:draft", backup:"gravity-log:last-backup", prompt:"gravity-log:backup-prompt", autoOff:"gravity-log:auto-backup-off"};
 const LS = {get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}};
 const S = {levels:{...START}, sessions:[], loaded:false, persistent:null};
 let tab = "train", day = null, draft = LS.get(KEY.draft, null);
@@ -673,6 +683,23 @@ async function deliver(text, type, name){
 async function exportBackup(){
   const ok = await deliver(JSON.stringify(backupObject(),null,1), "application/json", `gravity-log-backup-${todayISO()}.json`);
   if(ok){ LS.set(KEY.backup, new Date().toISOString()); toast("<b>Backup saved.</b> Keep the file somewhere off this phone, such as your PC or cloud drive."); render() }
+}
+// After a finished session, offer the share sheet for a backup, at most once a week and only if the last backup is a week old.
+const daysSince = k => { const t=LS.get(k,null); return t ? Math.floor((Date.now()-new Date(t))/864e5) : null };
+function backupDue(){
+  if(LS.get(KEY.autoOff,false)) return false;
+  const lb = daysSince(KEY.backup), lp = daysSince(KEY.prompt);
+  return (lb===null || lb>=7) && (lp===null || lp>=7);
+}
+async function autoBackup(){
+  LS.set(KEY.prompt, new Date().toISOString());
+  const name = `gravity-log-backup-${todayISO()}.json`, file = new File([JSON.stringify(backupObject(),null,1)], name, {type:"application/json"});
+  const again = '<button type="button" class="btn ghost" data-act="export">Save backup</button>';
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title:name}); LS.set(KEY.backup, new Date().toISOString()); toast("<b>Backup saved.</b> Keep the file off this phone."); render(); return }
+    catch(e){ if(e && e.name==="AbortError"){ toast("Backup skipped. You can save one any time in Progress, under Your data."); return } }
+  }
+  toast(`<b>Time for a backup.</b> ${again}`, 12000);
 }
 async function exportCSV(){ await deliver(csvText(), "text/csv", `gravity-log-sets-${todayISO()}.csv`) }
 function importBackup(file){
@@ -774,7 +801,7 @@ function render(){
   startFigures();
 }
 
-const ui = {show:new Set(), swap:new Set(), video:new Set(), frozen:new Map()};
+const ui = {show:new Set(), swap:new Set(), video:new Set(), frozen:new Map(), prog:new Map(), edit:null};
 // Taps change only what they affect, so a playing video, a photo or an open panel is never rebuilt by a set tick.
 const cardEl = ex => document.querySelector(`.card[data-card="${ex}"]`);
 function refreshFooter(){
@@ -933,6 +960,52 @@ function calendar(){
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sessions over the last 12 weeks">${out}</svg>`;
 }
 
+// Editing a finished session: a working copy in ui.edit, written back on Save. Levels are never recalculated.
+function altChoices(subFor){ return [...new Set((ALTMAP[subFor]||[]).flatMap(([,ids])=>ids))] }
+function sessionEditHTML(){
+  const d = ui.edit;
+  const rows = Object.entries(d.entries).map(([k,e])=>{
+    const alt = altOf(k), name = alt ? (ALT[alt] ? ALT[alt][0] : alt) : (EX[k] ? EX[k].name : k), unit = alt ? (ALT[alt]?ALT[alt][4]:"reps") : (EX[k]?EX[k].unit:"reps");
+    const which = alt
+      ? `<select data-ed="alt" data-k="${esc(k)}" aria-label="Alternative used">${altChoices(e.subFor).map(id=>`<option value="${id}" ${id===alt?"selected":""}>${esc(ALT[id][0])}</option>`).join("")}</select>`
+      : `<select data-ed="level" data-k="${esc(k)}" aria-label="Level used">${EX[k].levels.map((L,i)=>`<option value="${i}" ${i===e.level?"selected":""}>${i+1}. ${esc(L[0])}</option>`).join("")}</select>`;
+    const sets = e.sets.map((v,i)=>`<span class="ed-set"><input type="number" inputmode="numeric" min="0" value="${v}" data-ed="val" data-k="${esc(k)}" data-i="${i}" aria-label="${esc(name)} set ${i+1} ${unit==="s"?"seconds":"reps"}"><label><input type="checkbox" data-ed="done" data-k="${esc(k)}" data-i="${i}" ${e.done[i]?"checked":""}> done</label></span>`).join("");
+    return `<div class="ed-ex"><div class="ed-h"><b>${esc(name)}</b>${alt&&EX[e.subFor]?` <span class="sub">for ${esc(EX[e.subFor].name)}</span>`:""}<button type="button" class="btn ghost" data-act="edrm" data-k="${esc(k)}">Remove</button></div>${which}<div class="ed-sets">${sets}</div><div class="sub">${unit==="s"?"seconds":"reps"} per set</div></div>`;
+  }).join("");
+  return `<div class="ed">
+    <div class="ed-top"><label>Date <input type="date" data-ed="date" value="${esc(d.date)}"></label>
+      <label>Day <select data-ed="day"><option ${d.day==="A"?"selected":""}>A</option><option ${d.day==="B"?"selected":""}>B</option></select></label></div>
+    ${rows}
+    <div class="sub">Saving does not change your levels or level-up history; adjust levels in Program if needed.</div>
+    <div class="finish"><button type="button" class="btn primary" data-act="edsave">Save changes</button><button type="button" class="btn ghost" data-act="edcancel">Cancel</button></div>
+  </div>`;
+}
+function editChange(t){
+  const d = ui.edit, k = t.dataset.k, e = k && d.entries[k];
+  if(t.dataset.ed==="date") d.date = t.value;
+  else if(t.dataset.ed==="day") d.day = t.value;
+  else if(t.dataset.ed==="val") e.sets[+t.dataset.i] = Math.max(0, Number(t.value)||0);
+  else if(t.dataset.ed==="done") e.done[+t.dataset.i] = t.checked;
+  else if(t.dataset.ed==="level") e.level = +t.value;
+  else if(t.dataset.ed==="alt"){
+    // The entry is stored under alt:<id>, so the key changes with the alternative; keep its place in the list.
+    const taken = Object.keys(d.entries).filter(x=>x!==k).map(altOf);
+    const nk = taken.includes(t.value) ? `alt:${t.value}:${e.subFor}` : "alt:"+t.value, out = {};
+    Object.entries(d.entries).forEach(([x,v])=>{ out[x===k?nk:x] = v });
+    d.entries = out; render();
+  }
+}
+function saveEdit(){
+  const d = ui.edit, s = S.sessions.find(x=>x.id===d.id);
+  if(!s){ ui.edit = null; render(); return }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d.date) || isNaN(new Date(d.date+"T12:00:00"))){ toast("Enter a valid date."); return }
+  if(!Object.keys(d.entries).length){ toast("A session needs at least one exercise. Delete the session instead."); return }
+  if(d.date!==s.date) s.ts = new Date(d.date+"T12:00:00").getTime() + (s.ts % 1000);
+  s.date = d.date; s.day = d.day; s.entries = d.entries;
+  S.sessions.sort((a,b)=>a.ts-b.ts);
+  try{ saveLocal() }catch(e){ toast("Could not save the changes on this phone."); return }
+  ui.edit = null; toast("<b>Session updated.</b> Levels were not changed."); render();
+}
 function swapCards(){
   const ids = Object.keys(ALT).filter(id=>altEntries(id).length);
   if(!ids.length) return "";
@@ -970,7 +1043,7 @@ function viewProgress(){
     const ups=(s.levelUps||[]).map(ex=>EX[ex]?EX[ex].name:ex).join(", ");
     const swaps=Object.entries(s.entries||{}).filter(([k])=>altOf(k)).map(([k,e])=>ALT[altOf(k)] ? ALT[altOf(k)][0]+(EX[e.subFor]?" for "+EX[e.subFor].name:"") : null).filter(Boolean).join(", ");
     return `<div class="card"><div class="row"><div><b>${fmtDate(s.date)}</b> · Day ${s.day}<div class="meta">${sets} sets${ups?` · level-up: ${esc(ups)}`:""}${swaps?` · swaps: ${esc(swaps)}`:""}</div></div>
-      <span id="del-${s.id}"><button type="button" class="btn ghost" data-act="askdel" data-id="${s.id}">Delete</button></span></div></div>`;
+      <span id="del-${s.id}"><button type="button" class="btn ghost" data-act="edit" data-id="${s.id}">Edit</button> <button type="button" class="btn ghost" data-act="askdel" data-id="${s.id}">Delete</button></span></div>${ui.edit && ui.edit.id===s.id ? sessionEditHTML() : ""}</div>`;
   }).join("");
   return `<div class="block">
     <div class="stats">
@@ -993,17 +1066,20 @@ function viewProgress(){
         <input type="file" id="importfile" accept=".json,application/json" hidden>
       </div>
       <div class="last">Last backup: ${lastBackupDays()===null?"never":lastBackupDays()===0?"today":lastBackupDays()+" days ago"}</div>
+      <button type="button" class="tbtn" data-act="autobackup" aria-pressed="${!LS.get(KEY.autoOff,false)}">Weekly backup prompt after a session: ${LS.get(KEY.autoOff,false)?"off":"on"}</button>
     </div>
     <div class="block-h"><h2>History</h2></div>
     <div class="hist">${hist || '<p class="empty">Finished sessions appear here. Start with today\'s session in Train.</p>'}</div>
   </div>`;
 }
 
+// The same photo or figure, muscles and video as on Train, for any level of a ladder.
+function progPanel(ex, i){ const e = {level:i}; return showPanel(ex, e, spec(ex,e)) }
 function viewProgram(){
   const allEx=["handstand",...DAYS.A.pairs.flat(),...DAYS.B.pairs.flat()];
   const ladders = allEx.map(ex=>`<div class="card">
     <div class="ex-top"><div><div class="pattern">${esc(EX[ex].pattern)}</div><h3>${esc(EX[ex].name)}</h3></div><span class="lvl">${unitTxt(ex)}</span></div>
-    <ul class="lv-list">${EX[ex].levels.map((L,i)=>`<li class="${i===S.levels[ex]?"cur":""}"><span class="k">${i+1}</span><span>${esc(L[0])} <span class="r">${L[2]}–${L[3]}</span></span>${i===S.levels[ex]?'<span class="pill new">Current</span>':`<button type="button" data-act="setlvl" data-ex="${ex}" data-i="${i}">Set</button>`}</li>`).join("")}</ul>
+    <ul class="lv-list">${EX[ex].levels.map((L,i)=>`<li class="${i===S.levels[ex]?"cur":""}"><span class="k">${i+1}</span><span>${esc(L[0])} <span class="r">${L[2]}–${L[3]}</span></span><span class="lv-btns">${i===S.levels[ex]?'<span class="pill new">Current</span>':`<button type="button" data-act="setlvl" data-ex="${ex}" data-i="${i}">Set</button>`}<button type="button" data-act="plevel" data-ex="${ex}" data-i="${i}" aria-expanded="${ui.prog.get(ex)===i}">Show</button></span>${ui.prog.get(ex)===i?`<div class="lv-panel">${progPanel(ex,i)}</div>`:""}</li>`).join("")}</ul>
   </div>`).join("");
   return `<div class="block">
     <div class="card prose">
@@ -1026,7 +1102,7 @@ function viewProgram(){
 
 /* ---------- Actions ---------- */
 let toastT;
-function toast(msg){ const t=document.getElementById("toast"); t.innerHTML=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,4500) }
+function toast(msg, ms=4500){ const t=document.getElementById("toast"); t.innerHTML=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,ms) }
 
 async function finish(){
   const deload=isDeload(), ups=[], entries={};
@@ -1049,6 +1125,7 @@ async function finish(){
   draft=null; LS.set(KEY.draft,null); day=nextDayAfter(s.day);
   toast(ups.length ? `<b>Session saved.</b> Level-up: ${ups.map(ex=>esc(EX[ex].name)+" → "+esc(lv(ex,S.levels[ex]).name)).join("; ")}.` : "<b>Session saved.</b> Same levels next time; aim for one more rep or a few more seconds.");
   render();
+  if(backupDue()) await autoBackup();
 }
 const nextDayAfter = d => d==="A" ? "B" : "A";
 
@@ -1065,9 +1142,10 @@ document.addEventListener("click", async ev=>{
   else if(a==="show"){ ui.show.has(ex) ? ui.show.delete(ex) : ui.show.add(ex); refreshCard(ex) }
   else if(a==="pause"){
     ui.frozen.has(ex) ? ui.frozen.delete(ex) : ui.frozen.set(ex, FIG.s);
-    const f = cardEl(ex) && cardEl(ex).querySelector(".fig"); if(!f){ render(); return }
+    const f = tab==="train" && cardEl(ex) && cardEl(ex).querySelector(".fig"); if(!f){ render(); return }
     const e=draft.entries[ex]; f.outerHTML = figHTML(ex,e,spec(ex,e)); b.textContent = ui.frozen.has(ex) ? "▶ Play" : "⏸ Pause"; startFigures();
   }
+  else if(a==="plevel"){ ui.prog.get(ex)===i ? ui.prog.delete(ex) : ui.prog.set(ex,i); render() }
   else if(a==="swap"){ ui.swap.has(ex) ? ui.swap.delete(ex) : ui.swap.add(ex); refreshCard(ex) }
   else if(a==="missing"){ const k=b.dataset.k, m=draft.missing; m.includes(k) ? m.splice(m.indexOf(k),1) : m.push(k); saveDraft(); render() }
   else if(a==="pick"){
@@ -1080,15 +1158,20 @@ document.addEventListener("click", async ev=>{
     if(e.done.some(Boolean)){ toast("Untick the sets you have done before switching back."); return }
     delete e.sub; e.sets=lastValues(ex,e.level); e.done=Array(SETS).fill(false); ui.swap.delete(ex); saveDraft(); refreshCard(ex);
   }
-  else if(a==="video"){ ui.video.add(b.dataset.key); refreshCard(ex || b.closest(".card").dataset.card) }
+  else if(a==="video"){ ui.video.add(b.dataset.key); if(tab==="train") refreshCard(ex || b.closest(".card").dataset.card); else render() }
   else if(a==="warm"){ draft.warm[i]=!draft.warm[i]; saveDraft(); b.setAttribute("aria-pressed", draft.warm[i]) }
   else if(a==="day"){ if(draft && draft.day!==b.dataset.day && Object.values(draft.entries).some(e=>e.done.some(Boolean))){ toast("Finish or clear the current session before switching day."); return } day=b.dataset.day; draft=null; render() }
   else if(a==="finish"){ b.disabled=true; await finish() }
   else if(a==="resetdraft"){ draft=null; LS.set(KEY.draft,null); render() }
   else if(a==="setlvl"){ S.levels[ex]=i; try{ await saveLevels() }catch(e){ toast("Could not save the level.") } if(draft){ draft=null; LS.set(KEY.draft,null) } render(); toast(`${esc(EX[ex].name)} set to ${esc(lv(ex,i).name)}.`) }
+  else if(a==="edit"){ const s = S.sessions.find(x=>x.id===b.dataset.id); if(s){ ui.edit = {id:s.id, date:s.date, day:s.day, entries:JSON.parse(JSON.stringify(s.entries||{}))}; render() } }
+  else if(a==="edcancel"){ ui.edit = null; render() }
+  else if(a==="edsave"){ saveEdit() }
+  else if(a==="edrm"){ delete ui.edit.entries[b.dataset.k]; render() }
   else if(a==="askdel"){ document.getElementById("del-"+b.dataset.id).innerHTML=`<button type="button" class="btn danger" data-act="del" data-id="${b.dataset.id}">Confirm delete</button> <button type="button" class="btn ghost" data-act="nodel">Keep</button>` }
   else if(a==="nodel"){ render() }
   else if(a==="export"){ await exportBackup() }
+  else if(a==="autobackup"){ LS.set(KEY.autoOff, !LS.get(KEY.autoOff,false)); render() }
   else if(a==="csv"){ await exportCSV() }
   else if(a==="import"){ document.getElementById("importfile").click() }
   else if(a==="del"){ try{ await deleteSession(b.dataset.id); toast("Session deleted. Levels were not changed; adjust them in Program if needed.") }catch(e){ toast("Could not delete the session.") } render() }
@@ -1096,6 +1179,7 @@ document.addEventListener("click", async ev=>{
 document.addEventListener("change", ev=>{
   const t=ev.target;
   if(t.id==="importfile"){ if(t.files && t.files[0]) importBackup(t.files[0]); t.value=""; return }
+  if(t.dataset.ed && ui.edit){ editChange(t); return }
   if(t.dataset.act!=="val") return;
   draft.entries[t.dataset.ex].sets[+t.dataset.i]=Math.max(0,Number(t.value)||0); saveDraft(); refreshProgress(t.dataset.ex);
 });

@@ -33,6 +33,7 @@ The app then opens full screen and works offline after the first visit.
 - The log is kept in `localStorage` on that phone, in the browser that installed the app. It survives app updates and restarts.
 - It is lost if you clear the browser's data for the site or delete the home-screen app on iPhone. iOS can also clear storage for a site you haven't opened for several weeks. The app asks the browser to protect its storage, and Progress shows whether that was granted.
 - **Progress > Your data > Save backup (JSON)** writes the complete log to a file. On a phone it opens the share sheet, so you can save it to Files or Drive, or email it to yourself. **Restore from backup** reads it back and merges it, so sessions that are already there are not duplicated.
+- After you finish a session, if your last backup is a week old, the phone's share sheet opens with the backup file so you can save it to Drive, Files or email (at most once a week; a switch under Your data turns it off).
 - The app reminds you on the Train tab when you have 3 or more sessions and no backup in the last 14 days.
 
 ## Analysing on a PC
@@ -56,6 +57,10 @@ done.groupby(["exercise", "date"]).value.max().unstack(0).plot()
 ```
 
 The JSON backup has the same data plus your current levels: `{"levels": {...}, "sessions": [{"date", "day", "entries": {exercise: {"level", "sets", "done"}}, "levelUps"}]}`.
+
+## Editing history
+
+In Progress > History, **Edit** opens a finished session: change the date, the day, each set's number and done tick, the level or alternative recorded, or remove an exercise. Saving never changes your current levels or level-up history.
 
 ## Timers
 
