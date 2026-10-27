@@ -149,6 +149,10 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .set.gym .unit{margin-left:1px;margin-right:2px;min-width:0;font-size:.68rem;white-space:nowrap}
 .ed-set label{display:flex;align-items:center;gap:4px}
 .ed-set input[type=number]{width:70px}
+.cf{display:flex;flex-direction:column;gap:3px;font-size:.78rem;color:var(--muted)}
+.cf input,.cf select{font:inherit;color:var(--ink);padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);max-width:100%}
+.cf-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
+.cchart{width:100%;height:auto;display:block}
 .hold{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;height:38px;min-width:42px;padding:0 8px;margin-left:6px;font:500 .85rem var(--mono);cursor:pointer}
 .hold.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .timer b{font:500 1rem var(--mono);min-width:3.2em;text-align:center}
@@ -671,14 +675,14 @@ function startFigures(){
 /* ---------- Storage: this device only (localStorage), with backup export/import ---------- */
 const KEY = {data:"gravity-log:data", draft:"gravity-log:draft", backup:"gravity-log:last-backup", prompt:"gravity-log:backup-prompt", autoOff:"gravity-log:auto-backup-off"};
 const LS = {get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}};
-const S = {levels:{...START}, sessions:[], routine:"calisthenics", plans:{}, loaded:false, persistent:null};
+const S = {levels:{...START}, sessions:[], routine:"calisthenics", plans:{}, cardioOn:true, loaded:false, persistent:null};
 let tab = "train", day = null, draft = LS.get(KEY.draft, null);
 
 function setStore(t){document.getElementById("store").textContent=t}
 
 async function initStore(){
   const l = LS.get(KEY.data, null);
-  if(l){ S.levels = {...START, ...l.levels}; S.sessions = (l.sessions || []).sort((a,b)=>a.ts-b.ts); S.plans = l.plans || {}; S.routine = S.plans[l.routine] ? l.routine : "calisthenics" }
+  if(l){ S.levels = {...START, ...l.levels}; S.sessions = (l.sessions || []).sort((a,b)=>a.ts-b.ts); S.plans = l.plans || {}; S.routine = S.plans[l.routine] && l.routine!=="cardio" ? l.routine : "calisthenics"; S.cardioOn = l.cardioOn!==false }
   S.loaded = true; setStore("Saved on this phone"); render();
   // Ask the browser not to evict this site's storage (granted silently for installed apps in most browsers).
   try{
@@ -689,30 +693,34 @@ async function initStore(){
   }catch(e){}
   render();
 }
-function saveLocal(){ if(!LS.set(KEY.data,{levels:S.levels,sessions:S.sessions,routine:S.routine,plans:S.plans})) throw new Error("storage") }
+function saveLocal(){ if(!LS.set(KEY.data,{levels:S.levels,sessions:S.sessions,routine:S.routine,plans:S.plans,cardioOn:S.cardioOn})) throw new Error("storage") }
 async function saveLevels(){ saveLocal() }
 async function saveSession(s){ S.sessions.push(s); saveLocal() }
 async function deleteSession(id){ S.sessions = S.sessions.filter(s=>s.id!==id); saveLocal() }
 
 /* Backups: a full JSON file to restore, and a CSV (one row per set) to analyse on a PC. */
-function backupObject(){ return {app:"gravity-log", format:2, exported:new Date().toISOString(), levels:S.levels, sessions:S.sessions, routine:S.routine, plans:S.plans} }
+function backupObject(){ return {app:"gravity-log", format:2, exported:new Date().toISOString(), levels:S.levels, sessions:S.sessions, routine:S.routine, plans:S.plans, cardioOn:S.cardioOn} }
 function csvText(){
-  const rows=[["date","day","exercise","pattern","level","level_name","set","value","unit","done","substitute_for","routine","load_kg"]];
+  const rows=[["date","day","exercise","pattern","level","level_name","set","value","unit","done","substitute_for","routine","load_kg","rpe","distance_km","avg_hr"]];
   S.sessions.forEach(s=>Object.entries(s.entries||{}).forEach(([key,e])=>{
+    if(key==="cardio"){
+      rows.push([s.date,s.day,e.activity||"Cardio","Cardio · "+(e.type||""),"",e.activity||"Cardio",1,e.minutes,"min",1,"",s.routine,"",e.rpe==null?"":e.rpe,e.dist==null?"":e.dist,e.hr==null?"":e.hr]);
+      return;
+    }
     if(isGymKey(key)){
       const M = GYM.moves[key.slice(2)]; if(!M) return;
-      e.sets.forEach((v,i)=>rows.push([s.date,s.day,M.name,(GYM.slots[e.slot]||{}).pattern||"","",M.name,i+1,v,M.unit==="s"?"s":"reps",e.done[i]?1:0,"",s.routine||"calisthenics",e.loads?e.loads[i]:""]));
+      e.sets.forEach((v,i)=>rows.push([s.date,s.day,M.name,(GYM.slots[e.slot]||{}).pattern||"","",M.name,i+1,v,M.unit==="s"?"s":"reps",e.done[i]?1:0,"",s.routine||"calisthenics",e.loads?e.loads[i]:"","","",""]));
       return;
     }
     const alt = altOf(key);
     if(alt){
       if(!ALT[alt] || !EX[e.subFor]) return;
-      e.sets.forEach((v,i)=>rows.push([s.date,s.day,ALT[alt][0],EX[e.subFor].pattern,"",ALT[alt][0],i+1,v,ALT[alt][4],e.done[i]?1:0,EX[e.subFor].name,s.routine||"calisthenics",""]));
+      e.sets.forEach((v,i)=>rows.push([s.date,s.day,ALT[alt][0],EX[e.subFor].pattern,"",ALT[alt][0],i+1,v,ALT[alt][4],e.done[i]?1:0,EX[e.subFor].name,s.routine||"calisthenics","","","",""]));
       return;
     }
     const ex = key;
     if(!EX[ex]) return;
-    e.sets.forEach((v,i)=>rows.push([s.date,s.day,EX[ex].name,EX[ex].pattern,e.level+1,EX[ex].levels[e.level][0],i+1,v,EX[ex].unit,e.done[i]?1:0,"",s.routine||"calisthenics",""]));
+    e.sets.forEach((v,i)=>rows.push([s.date,s.day,EX[ex].name,EX[ex].pattern,e.level+1,EX[ex].levels[e.level][0],i+1,v,EX[ex].unit,e.done[i]?1:0,"",s.routine||"calisthenics","","","",""]));
   }));
   return rows.map(r=>r.map(c=>{const t=String(c);return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t}).join(",")).join("\n");
 }
@@ -759,7 +767,7 @@ function importBackup(file){
     const backupNewest = Math.max(0,...b.sessions.map(s=>s.ts||0)), localNewest = Math.max(0,...S.sessions.map(s=>s.ts||0));
     S.sessions = S.sessions.concat(added).sort((a,b)=>a.ts-b.ts);
     if(b.levels && backupNewest >= localNewest) S.levels = {...START, ...b.levels};
-    if(b.plans && typeof b.plans==="object"){ Object.keys(b.plans).forEach(id=>{ if(!S.plans[id]) S.plans[id] = b.plans[id] }); if(backupNewest >= localNewest && S.plans[b.routine]) S.routine = b.routine }
+    if(b.plans && typeof b.plans==="object"){ Object.keys(b.plans).forEach(id=>{ if(!S.plans[id]) S.plans[id] = b.plans[id] }); if(backupNewest >= localNewest && S.plans[b.routine] && b.routine!=="cardio") S.routine = b.routine }
     try{ saveLocal() }catch(e){ toast("Could not save the imported data on this phone."); return }
     draft = null; LS.set(KEY.draft, null);
     toast(`<b>Backup imported.</b> ${added.length} session${added.length===1?"":"s"} added; ${b.sessions.length-added.length} already here.`);
@@ -986,6 +994,7 @@ function gymCard(key){
     <div class="ex-top"><div><div class="pattern">${esc(GYM.slots[e.slot].pattern)}</div><h3>${esc(M.name)}</h3></div><span class="pill new">${esc(EQNAME[M.eq])}</span></div>
     <div class="cue">${esc(M.cue)}</div>
     <div class="needs">${esc(e.hint)}</div>
+    ${e.stall ? `<div class="banner deload">No progress on this lift for 3 sessions. A lighter week, more sleep or more food can unstick it, or try a different movement. <button type="button" class="btn ghost" data-act="gpick" data-ex="${key}" data-id="${e.stall}">Switch to ${esc(GYM.moves[e.stall].name)}</button></div>` : ""}
     <div class="target">Target ${e.sets.length} × ${e.range[0]}–${e.range[1]} ${unit}</div>
     <div class="sets">${sets}</div>
     <div class="tools">
@@ -1034,6 +1043,7 @@ function viewTrain(){
   const blocks = D.blocks.map(bk=>`<div class="block-h"><h3>${++n} · ${esc(bk.title)}</h3><span class="min">${bk.pair?`alternate, <span class="restn">${rest.len}</span> s rest · `:""}~${bk.min} min</span></div>${bk.pair ? `<div class="pair">${bk.items.map(it=>exCard(itemKey(it))).join("")}</div>` : bk.items.map(it=>exCard(itemKey(it))).join("")}`).join("");
   return `<div class="block">
     ${first}${deload}${remind}${effort}
+    ${cardioSection()}
     <div class="daybar">
       <div><h2>${esc(D.label)}</h2><div class="sub">${esc(D.focus)} · ${fmtDate(draft.date)}</div></div>
       <div class="seg" role="group" aria-label="Session">${r.days.map(d=>`<button type="button" data-act="day" data-day="${d.id}" aria-pressed="${day===d.id}">${esc(r.days.length>2?d.label.replace("Day ","D"):d.label)}</button>`).join("")}</div>
@@ -1094,6 +1104,10 @@ const editDays = () => { const s = ui.edit && S.sessions.find(x=>x.id===ui.edit.
 function sessionEditHTML(){
   const d = ui.edit;
   const rows = Object.entries(d.entries).map(([k,e])=>{
+    if(k==="cardio"){
+      const f = (key,label,extra="") => `<label>${label} <input type="number" inputmode="decimal" ${extra} value="${e[key]==null?"":e[key]}" data-ed="cfield" data-k="cardio" data-f="${key}"></label>`;
+      return `<div class="ed-ex"><div class="ed-h"><b>${esc(e.activity||"Cardio")}</b><button type="button" class="btn ghost" data-act="edrm" data-k="cardio">Remove</button></div><div class="ed-sets">${f("minutes","Minutes","min=1")}${f("rpe","Effort","min=1 max=10")}${f("dist","km","step=0.1 min=0")}${f("hr","Avg HR","min=30 max=230")}${f("rounds","Rounds","min=0")}</div></div>`;
+    }
     if(isGymKey(k)){
       const M = GYM.moves[k.slice(2)] || {name:k, unit:"reps"}, u = M.unit==="s" ? "seconds" : "reps";
       const sets = e.sets.map((v,i)=>`<span class="ed-set"><label>kg <input type="number" inputmode="decimal" step="0.5" min="0" value="${(e.loads||[])[i]||0}" data-ed="lval" data-k="${esc(k)}" data-i="${i}" aria-label="${esc(M.name)} set ${i+1} weight in kilograms"></label><label>${u} <input type="number" inputmode="numeric" min="0" value="${v}" data-ed="val" data-k="${esc(k)}" data-i="${i}" aria-label="${esc(M.name)} set ${i+1} ${u}"></label><label><input type="checkbox" data-ed="done" data-k="${esc(k)}" data-i="${i}" ${e.done[i]?"checked":""}> done</label></span>`).join("");
@@ -1120,6 +1134,7 @@ function editChange(t){
   else if(t.dataset.ed==="day") d.day = t.value;
   else if(t.dataset.ed==="val") e.sets[+t.dataset.i] = Math.max(0, Number(t.value)||0);
   else if(t.dataset.ed==="done") e.done[+t.dataset.i] = t.checked;
+  else if(t.dataset.ed==="cfield"){ const f = t.dataset.f, v = t.value==="" ? null : Number(t.value); e[f] = v; if(f==="minutes") e.sets = [v||0] }
   else if(t.dataset.ed==="lval"){ e.loads = e.loads || e.sets.map(()=>0); e.loads[+t.dataset.i] = Math.max(0, Number(t.value)||0) }
   else if(t.dataset.ed==="level") e.level = +t.value;
   else if(t.dataset.ed==="alt"){
@@ -1190,7 +1205,7 @@ function viewProgress(){
     const sets=Object.values(s.entries||{}).reduce((a,e)=>a+e.done.filter(Boolean).length,0);
     const ups=(s.levelUps||[]).map(ex=>EX[ex]?EX[ex].name:ex).join(", ");
     const swaps=Object.entries(s.entries||{}).filter(([k])=>altOf(k)).map(([k,e])=>ALT[altOf(k)] ? ALT[altOf(k)][0]+(EX[e.subFor]?" for "+EX[e.subFor].name:"") : null).filter(Boolean).join(", ");
-    return `<div class="card"><div class="row"><div><b>${fmtDate(s.date)}</b> · ${esc(dayLabelOf(s))}${s.routine&&s.routine!=="calisthenics"&&S.plans[s.routine]?" · "+esc(S.plans[s.routine].name):""}<div class="meta">${sets} sets${ups?` · level-up: ${esc(ups)}`:""}${swaps?` · swaps: ${esc(swaps)}`:""}</div></div>
+    return `<div class="card"><div class="row"><div><b>${fmtDate(s.date)}</b> · ${esc(dayLabelOf(s))}${s.routine&&s.routine!=="calisthenics"&&S.plans[s.routine]?" · "+esc(S.plans[s.routine].name):""}<div class="meta">${s.entries&&s.entries.cardio ? esc(cardioSummary(s.entries.cardio)) : sets+" sets"}${ups?` · level-up: ${esc(ups)}`:""}${swaps?` · swaps: ${esc(swaps)}`:""}</div></div>
       <span id="del-${s.id}"><button type="button" class="btn ghost" data-act="edit" data-id="${s.id}">Edit</button> <button type="button" class="btn ghost" data-act="askdel" data-id="${s.id}">Delete</button></span></div>${ui.edit && ui.edit.id===s.id ? sessionEditHTML() : ""}</div>`;
   }).join("");
   return `<div class="block">
@@ -1201,6 +1216,7 @@ function viewProgress(){
       <div class="stat"><b>${ups}</b><span>level-ups</span></div>
     </div>
     <div class="card"><div class="block-h"><h3>Last 12 weeks</h3><span class="sub"><span style="color:var(--accent)">■</span> Day A &nbsp;<span style="color:var(--chalk)">■</span> Day B</span></div><div class="cal">${calendar()}</div></div>
+    ${cardioProgress()}
     <div class="block-h"><h2>Movements</h2><span class="sub">Line = level + share of the top of range reached</span></div>
     <div class="grid2">${cards}${gymProgressCards()}</div>
     ${swapCards()}
@@ -1323,17 +1339,188 @@ function nextGym(mid, range, inc, n){
   return {loads:fitSets(last.loads.slice(), n, w), reps:fitSets(last.sets.map(Number), n, range[0]),
     hint: low ? `Last time ${txt}. Some sets fell under ${range[0]} reps: stay at ${w} kg until every set reaches ${range[0]} or more.` : `Last time ${txt}. Same weight; add a rep to a set when you can, and go up once every set reaches ${range[1]}.`};
 }
+// True when none of the last three sessions with this movement beat the first of them (estimated max).
+function gymStall(mid){
+  const hist = []; S.sessions.forEach(s=>{ const e = (s.entries||{})["g:"+mid]; if(e && e.done.some(Boolean)) hist.push(e) });
+  if(hist.length<3) return false;
+  const [a,b,c] = hist.slice(-3).map(e1rm);
+  return a>0 && b<=a*1.005 && c<=a*1.005;
+}
 // A draft entry for one gym pattern today: the movement, the suggested loads and reps, and the number of sets.
 function gymEntryFor(slot, n, range){
   const plan = R(), mid = moveFor(plan, slot), M = GYM.moves[mid], info = gymInfo(plan), rg = M.unit==="s" ? [30,60] : range;
   const sug = nextGym(mid, rg, M.inc, n);
   const loads = info.deload ? sug.loads.map(l=>roundTo(l*.85, M.inc)) : sug.loads;
-  return {gym:true, slot, move:mid, range:rg, hint:sug.hint, sets:sug.reps, loads, done:Array(n).fill(false)};
+  const o = moveOptions(plan, slot), next = o.length>1 && gymStall(mid) && !info.deload ? o[(o.indexOf(mid)+1)%o.length] : null;
+  return {gym:true, slot, move:mid, range:rg, hint:sug.hint, sets:sug.reps, loads, done:Array(n).fill(false), stall:next};
 }
 function gymSets(it, plan){
   const info = gymInfo(plan);
   if(info.deload) return 2;
   return Math.min(it.kind==="compound" ? 6 : 5, it.sets + (it.kind==="compound" ? info.ramp : 0));
+}
+
+/* ---------- Cardio ---------- */
+// A cardio plan runs next to the strength routine: its own sessions, history and weekly minutes. Rules and sources: EVIDENCE_CARDIO.
+const CARDIO_GOALS = {health:{name:"General health"}, fitness:{name:"Improve fitness (VO2max)"}};
+const CARDIO_LEN = {short:{label:"short, about 20 minutes", min:20}, mid:{label:"mid, about 35 minutes", min:35}, long:{label:"long, about 50 minutes", min:50}};
+const CARDIO_EXP = {beginner:{name:"New to cardio", ramp:true}, intermediate:{name:"Some experience"}, fit:{name:"Already fit"}};
+const CARDIO_ACT = {walk:"Walking or hiking", run:"Running", machine:"Rowing, swimming, elliptical or stair climber"};
+const EASY_ACT = {walk:["Brisk walk","Incline walk","Hike"], run:["Easy run"], machine:["Rowing machine","Swimming","Elliptical","Stair climber"]};
+const HARD_ACT = {walk:["Steep incline walk"], run:["Run intervals"], machine:["Rowing machine","Stair climber","Elliptical"]};
+// Interval tiers from short to long. Work and rest are in seconds.
+const TIERS = [{r:6,w:30,rest:60},{r:8,w:30,rest:60},{r:10,w:30,rest:60},{r:4,w:120,rest:120},{r:4,w:180,rest:150},{r:4,w:240,rest:180}];
+const fmtSec = s => s>=60 ? (s/60)+" min" : s+" s";
+const tierText = t => `${t.r} × ${fmtSec(t.w)} hard, ${fmtSec(t.rest)} easy`;
+const WARM_MIN = 8, COOL_MIN = 5, CARDIO_BLOCK = 4;
+function cardioInfo(plan){
+  const wk = Math.max(0, Math.floor((new Date() - new Date(plan.started+"T12:00:00"))/(7*864e5))), w = wk % CARDIO_BLOCK;
+  return {week:wk+1, inBlock:w+1, light:w===CARDIO_BLOCK-1, wk};
+}
+// The interval tier for a plan this week: it starts by experience and length and climbs a step every two weeks.
+function tierFor(plan, info){
+  const len = plan.inputs.len, exp = plan.inputs.exp;
+  const cap = {short:2, mid:4, long:5}[len], start = Math.min(cap, exp==="beginner" ? (len==="short"?0:3) : exp==="intermediate" ? ({short:1,mid:3,long:4})[len] : cap);
+  const t = Math.min(cap, start + Math.floor(info.wk/2)) - (info.light ? 1 : 0);
+  return TIERS[Math.max(0, t)];
+}
+const hrText = (age, lo, hi) => { const m = 208-0.7*age; return `about ${Math.round(m*lo)}–${Math.round(m*hi)} beats per minute (a rough estimate, with an error of around 10 or more)` };
+function buildCardioPlan(inp){
+  const L = CARDIO_LEN[inp.len].min, sessions = [], d = inp.days, fit = inp.goal==="fitness";
+  // How many hard sessions: fitness gets one (two with five or more days and some experience); health gets one only with four or more days and some experience.
+  const hard = fit ? (d>=5 && inp.exp!=="beginner" ? 2 : 1) : (d>=4 && inp.exp!=="beginner" ? 1 : 0);
+  const kinds = Array(d).fill("easy");
+  // Hard sessions are spaced with easy days around them: the second session, and the second-to-last when there are two.
+  const hardAt = d===1 ? [0] : hard>=2 ? [1, Math.max(2,d-2)] : [1];
+  hardAt.slice(0,hard).forEach(i=>{ kinds[i] = "hard" });
+  // The last easy session is the longer one when there are three or more easy sessions.
+  const easyIdx = kinds.map((k,i)=>k==="easy"?i:-1).filter(i=>i>=0);
+  kinds.forEach((k,i)=>{ sessions.push({id:"C"+(i+1), label:"Session "+(i+1), type:k==="hard" ? "vo2" : (easyIdx.length>=3 && i===easyIdx[easyIdx.length-1] ? "long" : "easy")}) });
+  const acts = [...inp.activities];
+  return {
+    id:"cardio", kind:"cardio", name:"Cardio", created:new Date().toISOString(), started:todayISO(), cycle:CARDIO_BLOCK,
+    inputs:{days:d, len:inp.len, goal:inp.goal, exp:inp.exp, activities:acts, lowImpact:!!inp.lowImpact, age:inp.age||null},
+    days:sessions.map(s=>({...s, focus:{easy:"Easy (Zone 2)", long:"Long easy", vo2:"Intervals"}[s.type]}))
+  };
+}
+// A planned session for today: its minutes, activity options and effort.
+function cardioSession(plan, day){
+  const info = cardioInfo(plan), inp = plan.inputs, L = CARDIO_LEN[inp.len].min, idx = plan.days.findIndex(x=>x.id===day.id);
+  const ramp = CARDIO_EXP[inp.exp].ramp && info.wk<3 ? 0.7+0.1*info.wk : 1, lightF = info.light ? 0.7 : 1;
+  const run = inp.activities.includes("run") && !inp.lowImpact, pool = (k,m) => inp.activities.filter(a=>a!=="run" || (!inp.lowImpact)).flatMap(a=>m[a]||[]);
+  if(day.type==="vo2"){
+    const t = tierFor(plan, info), tot = WARM_MIN + Math.round(t.r*(t.w+t.rest)/60) + COOL_MIN;
+    let opts = pool("hard",HARD_ACT); if(inp.exp==="beginner") opts = opts.filter(o=>o!=="Run intervals");
+    if(!opts.length) opts = ["Steep incline walk"];
+    return {type:"vo2", tier:t, minutes:tot, activities:opts, activity:opts[(info.wk+idx)%opts.length],
+      effort:"Hard but controlled: 8–9 out of 10, where you can say only a few words. Warm up for 8 minutes, do the intervals, cool down for 5.",
+      hr: inp.age ? hrText(inp.age,.9,.95) : null, text:tierText(t)};
+  }
+  const minutes = Math.round(L*ramp*lightF*(day.type==="long"?1.3:1)/5)*5 || 5, opts = pool("easy",EASY_ACT).length ? pool("easy",EASY_ACT) : ["Brisk walk"];
+  return {type:day.type, minutes, activities:opts, activity:opts[(info.wk+idx)%opts.length],
+    effort:"Easy and conversational: you can speak in full sentences, about 3–4 out of 10. If you cannot talk, slow down.",
+    hr: inp.age ? hrText(inp.age,.6,.75) : null, text:`${minutes} minutes easy`};
+}
+// The next cardio session after the last one logged.
+function nextCardioDay(plan){
+  const last = [...S.sessions].reverse().find(s=>s.routine==="cardio"), i = last ? plan.days.findIndex(d=>d.id===last.day) : -1;
+  return plan.days[(i+1)%plan.days.length];
+}
+// Weekly minutes, with moderate-equivalent minutes for the WHO range (hard work counts double).
+function cardioWeek(plan){
+  let easy = 0, hard = 0;
+  plan.days.forEach(d=>{ const s = cardioSession(plan,d); if(d.type==="vo2"){ const w = Math.round(s.tier.r*s.tier.w/60); hard += w; easy += s.minutes - w } else easy += s.minutes });
+  return {easy, hard, total:easy+hard, eq:easy+2*hard};
+}
+const cardioSummary = e => `${e.minutes} min ${e.activity||"cardio"}${e.rpe?` · effort ${e.rpe}/10`:""}${e.dist?` · ${e.dist} km`:""}${e.hr?` · avg HR ${e.hr}`:""}${e.rounds?` · ${e.rounds} rounds`:""}`;
+
+
+/* ---------- Cardio on the Train tab ---------- */
+const CDKEY = "gravity-log:cardio-draft";
+let cdraft = LS.get(CDKEY, null), INTV = null;
+const saveCD = () => LS.set(CDKEY, cdraft);
+function cardioToday(){
+  const plan = S.plans.cardio; if(!plan) return null;
+  const day = nextCardioDay(plan), s = cardioSession(plan, day);
+  if(!cdraft || cdraft.day!==day.id || cdraft.date!==todayISO()){
+    cdraft = {day:day.id, date:todayISO(), activity:s.activity, minutes:s.minutes, rpe:"", dist:"", hr:"", rounds:""}; saveCD();
+  }
+  return {plan, day, s};
+}
+function cardioSection(){
+  if(!S.plans.cardio || S.cardioOn===false) return "";
+  const {plan, day, s} = cardioToday(), info = cardioInfo(plan), wk = cardioWeek(plan);
+  const today = S.sessions.some(x=>x.routine==="cardio" && x.date===todayISO());
+  const vo2 = s.type==="vo2", num = (f,label,extra="") => `<label class="cf">${label}<input type="number" inputmode="decimal" id="cf-${f}" data-cf="${f}" value="${esc(cdraft[f])}" ${extra}></label>`;
+  return `<div class="block-h"><h3>Cardio · ${esc(day.focus)}</h3><span class="min">${info.light?"lighter week":"week "+info.inBlock+" of "+plan.cycle}</span></div>
+  <div class="card" data-card="cardio">
+    <div class="ex-top"><div><div class="pattern">Cardio · ${esc(day.label)}</div><h3>${esc(s.text)}</h3></div><span class="pill ${vo2?"up":"ok"}">${vo2?"Hard":"Easy"}</span></div>
+    <div class="cue">${esc(s.effort)}</div>
+    ${s.hr?`<div class="needs">Heart rate target: ${esc(s.hr)}. Trust the talk test over the number.</div>`:""}
+    ${today?`<div class="needs">You already logged cardio today.</div>`:""}
+    <label class="cf">Activity <select id="cf-activity" data-cf="activity">${s.activities.map(a=>`<option ${a===cdraft.activity?"selected":""}>${esc(a)}</option>`).join("")}</select></label>
+    ${vo2?`<div class="tools"><button type="button" class="tbtn" data-act="intv" aria-pressed="${!!INTV}">${INTV?"■ Stop":"▶ Start interval timer"}</button><span class="sub" id="intv-text">${esc(tierText(s.tier))}</span></div>`:""}
+    <div class="cf-grid">
+      ${num("minutes","Minutes","min=1")}${num("rpe","Effort 1–10","min=1 max=10")}${num("dist","Distance km (optional)","min=0 step=0.1")}${num("hr","Average heart rate (optional)","min=30 max=230")}${vo2?num("rounds","Rounds done","min=0"):""}
+    </div>
+    <div class="finish"><button type="button" class="btn primary" data-act="csave">Save cardio session</button></div>
+    <div class="sub">This week's plan: about ${wk.total} minutes, ${wk.eq} moderate-equivalent against the WHO range of 150–300.</div>
+  </div>`;
+}
+// Interval timer: hard and easy periods with a short vibration at each change.
+function intvPhases(t){ const ph = []; for(let i=1;i<=t.r;i++){ ph.push({name:"HARD", sec:t.w, round:i}); if(i<t.r) ph.push({name:"EASY", sec:t.rest, round:i}) } return ph }
+function intvText(txt){ const el = document.getElementById("intv-text"); if(el) el.textContent = txt }
+function stopIntervals(done){
+  if(!INTV) return;
+  const finished = INTV.rounds; clearInterval(INTV.t); INTV = null;
+  if(cdraft){ cdraft.rounds = String(finished); saveCD(); const el = document.getElementById("cf-rounds"); if(el) el.value = finished }
+  const b = document.querySelector('[data-act="intv"]'); if(b){ b.textContent = "▶ Start interval timer"; b.setAttribute("aria-pressed","false") }
+  if(done) buzz([300,100,300,100,600]);
+  intvText(done ? `Done: ${finished} rounds.` : `Stopped after ${finished} round${finished===1?"":"s"}.`);
+}
+function startIntervals(){
+  const c = cardioToday(); if(!c || c.s.type!=="vo2") return;
+  const phases = intvPhases(c.s.tier);
+  INTV = {phases, i:0, end:Date.now()+phases[0].sec*1000, rounds:0, total:c.s.tier.r, t:setInterval(intvTick,250)};
+  const b = document.querySelector('[data-act="intv"]'); if(b){ b.textContent = "■ Stop"; b.setAttribute("aria-pressed","true") }
+  buzz(300); intvTick();
+}
+function intvTick(){
+  if(!INTV) return;
+  let left = Math.ceil((INTV.end-Date.now())/1000);
+  while(left<=0){
+    const ph = INTV.phases[INTV.i]; if(ph.name==="HARD") INTV.rounds = ph.round;
+    INTV.i++; if(INTV.i>=INTV.phases.length){ stopIntervals(true); return }
+    INTV.end += INTV.phases[INTV.i].sec*1000; left = Math.ceil((INTV.end-Date.now())/1000); buzz(INTV.phases[INTV.i].name==="HARD" ? [300] : [150,80,150]);
+  }
+  const ph = INTV.phases[INTV.i];
+  intvText(`${ph.name} · round ${ph.round} of ${INTV.total} · ${clockText(left)}`);
+}
+function saveCardio(){
+  const c = cardioToday(), d = cdraft, mins = Number(d.minutes);
+  if(!(mins>0)){ toast("Enter how many minutes you did."); return }
+  const rounds = c.s.type==="vo2" ? Number(d.rounds)||0 : 0, hardMin = c.s.type==="vo2" ? Math.round(rounds*c.s.tier.w/60) : 0;
+  const entry = {cardio:true, type:c.s.type, activity:d.activity, planned:c.s.minutes, minutes:mins, rpe:d.rpe===""?null:Number(d.rpe), dist:d.dist===""?null:Number(d.dist), hr:d.hr===""?null:Number(d.hr), rounds, hardMin, sets:[mins], done:[true]};
+  const s = {id:"s"+Date.now(), date:d.date, ts:Date.now(), routine:"cardio", day:d.day, warmup:0, entries:{cardio:entry}, levelUps:[]};
+  try{ S.sessions.push(s); saveLocal() }catch(e){ S.sessions.pop(); toast("Could not save the session on this phone."); return }
+  stopIntervals(false); cdraft = null; LS.set(CDKEY,null);
+  toast(`<b>Cardio saved.</b> ${esc(cardioSummary(entry))}.`); render();
+}
+// Weekly cardio chart for Progress: moderate-equivalent minutes per week against the WHO range.
+function cardioProgress(){
+  const sess = S.sessions.filter(s=>s.routine==="cardio"); if(!sess.length && !S.plans.cardio) return "";
+  const mon = d => { const x = new Date(d+"T12:00:00"); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x.toISOString().slice(0,10) };
+  const now = new Date(); now.setHours(12,0,0,0); const thisMon = mon(todayISO()), weeks = [];
+  for(let i=7;i>=0;i--){ const d = new Date(thisMon+"T12:00:00"); d.setDate(d.getDate()-7*i); weeks.push(d.toISOString().slice(0,10)) }
+  const eq = {}; sess.forEach(s=>{ const e = s.entries.cardio, w = mon(s.date); eq[w] = (eq[w]||0) + (e.minutes-(e.hardMin||0)) + 2*(e.hardMin||0) });
+  const vals = weeks.map(w=>Math.round(eq[w]||0)), W=300, H=130, P=18, top = Math.max(320, ...vals)*1.05, y = v => H-P-(v/top)*(H-2*P), bw = (W-2*P)/8-6;
+  const bars = vals.map((v,i)=>`<rect x="${P+i*((W-2*P)/8)+3}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(H-P-y(v)).toFixed(1)}" rx="3" fill="${v>=150?"var(--good)":"var(--accent)"}"><title>Week of ${weeks[i]}: ${v} moderate-equivalent minutes</title></rect>`).join("");
+  const line = (v,l) => `<line x1="${P}" x2="${W-P}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="var(--chalk)" stroke-dasharray="4 3"/><text x="${W-P}" y="${(y(v)-3).toFixed(1)}" font-size="9" text-anchor="end" fill="var(--muted)" font-family="var(--mono)">${l}</text>`;
+  const effort = sess.map(s=>s.entries.cardio.rpe).filter(Boolean), avg = effort.length ? (effort.reduce((a,b)=>a+b,0)/effort.length).toFixed(1) : "–";
+  const thisWk = vals[7], total = sess.reduce((a,s)=>a+s.entries.cardio.minutes,0);
+  return `<div class="card"><div class="block-h"><h3>Cardio</h3><span class="sub">Moderate-equivalent minutes a week (hard work counts double)</span></div>
+    <svg viewBox="0 0 ${W} ${H}" class="cchart" role="img" aria-label="Cardio minutes per week for the last 8 weeks against the WHO range of 150 to 300">${line(150,"150")}${line(300,"300")}${bars}</svg>
+    <div class="last">This week ${thisWk} min · ${sess.length} session${sess.length===1?"":"s"}, ${total} min in total · average effort ${avg}/10. Green weeks reach the WHO minimum of 150.</div></div>`;
 }
 
 /* ---------- Routine generator: home training ---------- */
@@ -1596,6 +1783,34 @@ const EVIDENCE_GYM = [
    text:"A standard method with the three coaches; the app suggests the next weight from your last session.", links:[], confidence:"Convention more than a tested protocol."}
 ];
 
+const EVIDENCE_CARDIO = [
+  {rule:"Weekly total", use:"At least 150 minutes of moderate cardio a week, up to 300; hard minutes count double.",
+   text:"The WHO 2020 guidelines recommend 150–300 minutes of moderate or 75–150 minutes of vigorous activity a week, or an equivalent mix, for adults. The old rule that bouts must last 10 minutes was dropped.",
+   links:[["WHO 2020 guidelines","https://www.who.int/publications/i/item/9789240015128"],["Abstract (PubMed)","https://pubmed.ncbi.nlm.nih.gov/33239350/"]],
+   confidence:"High. A guideline backed by systematic reviews."},
+  {rule:"Why fitness matters", use:"Include work that raises VO2max, not only minutes.",
+   text:"In 122,007 patients who took a treadmill test, higher fitness was linked to lower all-cause mortality with no upper limit seen. This is observational, so it shows an association rather than proof that training causes it.",
+   links:[["Mandsager et al. 2018","https://jamanetwork.com/journals/jamanetworkopen/articlepdf/2707428/mandsager_2018_oi_180168.pdf"]],
+   confidence:"Medium to high for the link; it does not prove cause."},
+  {rule:"One interval session a week", use:"A session of hard intervals, for example 4 × 4 minutes hard with 3 minutes easy, scaled to your level and time.",
+   text:"In 40 moderately trained men, 4 × 4 minutes at 90–95% of maximum heart rate raised VO2max by 7.2%, more than the same work at lower intensities. A meta-analysis found intervals beat steady training by a small margin (about 1.2 mL/kg/min) and that both give large gains.",
+   links:[["Helgerud et al. 2007","https://pubmed.ncbi.nlm.nih.gov/17414804/"],["Milanović et al. 2015 meta-analysis","https://link.springer.com/article/10.1007/s40279-015-0365-0"]],
+   confidence:"Medium. The 4 × 4 trial was small and all men; the meta-analysis covers healthy young to middle-aged adults."},
+  {rule:"Mostly easy, some hard", use:"Most sessions easy, one or two hard.",
+   text:"A 9-week trial of 48 trained athletes found polarized training (mostly easy plus some hard) gave the biggest VO2peak gain. The 80/20 idea comes from Seiler's work on elite endurance athletes, so it may not transfer exactly to the general public.",
+   links:[["Stöggl & Sperlich 2014","https://www.frontiersin.org/journals/physiology/articles/10.3389/fphys.2014.00033/full"],["Seiler-based review (2015)","https://www.frontiersin.org/journals/physiology/articles/10.3389/fphys.2015.00295/full"]],
+   confidence:"Medium. Trained athletes, short trial."},
+  {rule:"Zone 2", use:"Easy, conversational sessions as the base of the week.",
+   text:"Popular recommendations: Attia suggests about 3–4 hours a week of Zone 2 and 1–2 hard sessions; Huberman is usually summarised as 150–200 minutes of Zone 2 plus hard intervals. These come from podcasts and secondary summaries, not from trials, and the numbers vary between summaries. A 2025 review argues the evidence does not show Zone 2 is the best intensity for mitochondrial fitness and that harder work matters most when training time is limited.",
+   links:[["Attia on Zone 2 and Zone 5","https://peterattiamd.com/exercising-for-longevity-peter-on-zone-2-and-zone-5-training/"],["Zone 2 narrative review, 2025","https://pubmed.ncbi.nlm.nih.gov/40560504/"]],
+   confidence:"Low to medium. Contested; this plan uses easy sessions for volume and recovery, and does not claim Zone 2 is special."},
+  {rule:"Measuring intensity", use:"Use the talk test and effort 1–10 first; heart rate is an optional guide.",
+   text:"The formula 208 − 0.7 × age predicts maximum heart rate better than 220 − age for groups, but an individual's error is around 11–12 beats per minute or more. If you enter your age the plan shows a rough range; trust the talk test.",
+   links:[["Tanaka et al. 2001 (record)","https://synapsesocial.com/papers/W2090296913"]],
+   confidence:"Medium for the group estimate; poor for any one person."}
+];
+const CARDIO_NOTE = "To check any figure, open its link: the abstract states the numbers. Podcast figures (Attia, Huberman) are labelled as popular recommendations because I could not trace them to a trial.";
+
 const EVIDENCE = [
   {rule:"Weekly hard sets per muscle", use:"General fitness 3–6 up to muscle gain 8–12, depending on experience and the time you have.",
    text:"Israetel puts maintenance near 6 sets, the start of growth near 6–10 and the best range near 10–20. Nippard is commonly cited at 10–20. Ethier argues about 3 may maintain gains and uses about 6 in his sample plan. A 2024 preprint finds diminishing returns past roughly 11 sets, but its figures vary between versions.",
@@ -1619,10 +1834,26 @@ const EVIDENCE = [
 const EVIDENCE_NOTE = "These are general guidelines, not medical advice. The primary papers and the three creators' videos were not read; the figures come from articles that summarise them, so check the links.";
 
 /* ---------- Routine tab ---------- */
-ui.rf = {type:"home", days:3, len:"mid", goal:"general", exp:"intermediate", limits:[], equip:["barbell","dumbbell","cable","machine"], preview:null};
-function planSummary(p){ const i = p.inputs; if(p.kind==="gym") return `${i.days} days a week · ${LENGTHS[i.len].label} · ${GOALS[i.goal].name} · ${EXPERIENCE[i.exp].name.toLowerCase()} · ${i.equip.map(k=>GYM_EQUIP[k].toLowerCase()).join(", ")}`; return `${i.days} days a week · ${LENGTHS[i.len].label} · ${GOALS[i.goal].name} · ${EXPERIENCE[i.exp].name.toLowerCase()}${i.limits.length?" · "+i.limits.map(k=>LIMITS[k].toLowerCase()).join(", "):""}` }
+ui.rf = {type:"home", days:3, len:"mid", goal:"general", exp:"intermediate", limits:[], equip:["barbell","dumbbell","cable","machine"], activities:["walk","run","machine"], lowImpact:false, age:"", preview:null};
+function planSummary(p){ const i = p.inputs; if(p.kind==="cardio") return `${i.days} sessions a week · ${CARDIO_LEN[i.len].label} · ${CARDIO_GOALS[i.goal].name} · ${CARDIO_EXP[i.exp].name.toLowerCase()} · ${i.activities.map(a=>CARDIO_ACT[a].split(",")[0].toLowerCase()).join(", ")}${i.lowImpact?" · low impact":""}`; if(p.kind==="gym") return `${i.days} days a week · ${LENGTHS[i.len].label} · ${GOALS[i.goal].name} · ${EXPERIENCE[i.exp].name.toLowerCase()} · ${i.equip.map(k=>GYM_EQUIP[k].toLowerCase()).join(", ")}`; return `${i.days} days a week · ${LENGTHS[i.len].label} · ${GOALS[i.goal].name} · ${EXPERIENCE[i.exp].name.toLowerCase()}${i.limits.length?" · "+i.limits.map(k=>LIMITS[k].toLowerCase()).join(", "):""}` }
 const itemName = it => it.gym ? GYM.moves[moveFor(S.plans.gym || ui.rf.preview, it.slot)].name : it.sub ? ALT[it.sub][0] : lv(it.ex, S.levels[it.ex]).name;
+function cardioPreview(p){
+  const wk = cardioWeek(p), ok = wk.eq>=150;
+  const cards = p.days.map(d=>{ const s = cardioSession(p,d); return `<div class="card"><div class="ex-top"><div><h3>${esc(d.label)}</h3><div class="sub">${esc(d.focus)}</div></div><span class="lvl">~${s.minutes} min</span></div>
+    <ul class="plan-list"><li><b>${esc(s.text)}</b></li><li>${esc(s.activities.slice(0,3).join(", "))}</li><li class="sub">${esc(s.effort)}${s.hr?" Heart rate: "+esc(s.hr)+".":""}</li></ul></div>` }).join("");
+  const notes = [];
+  if(!ok) notes.push(`This week adds up to ${wk.eq} moderate-equivalent minutes, under the WHO minimum of 150. Another session or longer sessions would reach it.`);
+  if(wk.eq>300) notes.push(`This week is ${wk.eq} moderate-equivalent minutes, above the WHO range of 150–300; that is fine if you recover well.`);
+  if(CARDIO_EXP[p.inputs.exp].ramp) notes.push("New to cardio: easy sessions start at about 70% of their length and build over the first three weeks.");
+  notes.push(`Each block is ${CARDIO_BLOCK-1} weeks of building and a lighter week (about 70% of the easy time and a shorter interval set). Intervals get longer every two weeks until they reach the length you chose.`);
+  notes.push("Stop and see a doctor first if you have chest pain, unusual breathlessness or dizziness, or a heart condition.");
+  return `<div class="block"><div class="sub">${esc(planSummary(p))}</div><div class="grid2">${cards}</div>
+    <div class="card"><h3>The week in minutes</h3><div class="stats"><div class="stat"><b>${wk.total}</b><span>minutes</span></div><div class="stat"><b>${wk.hard}</b><span>hard minutes</span></div><div class="stat"><b>${wk.eq}</b><span>moderate-equivalent</span></div><div class="stat"><b>${ok?"yes":"no"}</b><span>reaches WHO 150</span></div></div>
+    <div class="sub">Moderate-equivalent = easy minutes plus twice the hard minutes. The WHO range is 150–300.</div></div>
+    <div class="card"><h3>Notes</h3><ul class="plan-list">${notes.map(n=>`<li>${esc(n)}</li>`).join("")}</ul></div></div>`;
+}
 function planPreview(p){
+  if(p.kind==="cardio") return cardioPreview(p);
   const dayCards = p.days.map(d=>`<div class="card"><div class="ex-top"><div><h3>${esc(d.label)}</h3><div class="sub">${esc(d.focus)}</div></div><span class="lvl">${d.setCount} sets · ~${d.min} min</span></div>
     <ul class="plan-list">${d.blocks.map(b=>`<li>${b.items.map(it=>`<b>${esc(it.gym ? GYM.moves[moveFor(p, it.slot)].name : itemName(it))}</b> ${it.sets} × ${it.gym ? it.reps[0]+"–"+it.reps[1] : "sets"}`).join(b.pair?" <span class=sub>with</span> ":"")}</li>`).join("")}</ul></div>`).join("");
   const rows = MUSC.map(m=>{ const w = p.weekly[m], eff = w.direct+w.indirect, ok = eff>=.8*w.target;
@@ -1646,26 +1877,32 @@ function viewRoutine(){
       ${S.routine!=="calisthenics"?`<button type="button" class="btn ghost" data-act="useroutine" data-id="calisthenics">Switch to Calisthenics</button>`:""}
       ${home && S.routine!=="home"?`<button type="button" class="btn ghost" data-act="useroutine" data-id="home">Switch to Home training</button>`:""}
       ${S.plans.gym && S.routine!=="gym"?`<button type="button" class="btn ghost" data-act="useroutine" data-id="gym">Switch to Gym training</button>`:""}
-    </div></div>`;
+    </div>
+    ${S.plans.cardio ? `<div class="sub"><b>Cardio plan${S.cardioOn===false?" (paused)":""}:</b> ${esc(planSummary(S.plans.cardio))}</div><div class="data-actions"><button type="button" class="btn ghost" data-act="cardiotoggle">${S.cardioOn===false?"Resume cardio":"Pause cardio"}</button></div>` : ""}</div>`;
   const types = `<div class="card"><h3>Routine types</h3><div class="tools">
     <button type="button" class="tbtn" data-act="rftype" data-v="home" aria-pressed="${f.type==="home"}">Home training</button>
     <button type="button" class="tbtn" data-act="rftype" data-v="gym" aria-pressed="${f.type==="gym"}">Gym training</button>
-    <button type="button" class="tbtn" disabled>Cardio · soon</button></div>
-    <div class="sub">${f.type==="gym" ? "Gym training: the key movement patterns, several movements for each, with weights logged and the next weight suggested." : "Home training: movement patterns and muscle groups with bodyweight only (a floor, a wall, a chair or table)."} The calisthenics routine stays as it is.</div></div>`;
-  const gymP = S.plans.gym, gym = f.type==="gym";
+    <button type="button" class="tbtn" data-act="rftype" data-v="cardio" aria-pressed="${f.type==="cardio"}">Cardio</button></div>
+    <div class="sub">${f.type==="cardio" ? "Cardio: easy and hard sessions with weekly minutes against the WHO guideline. It runs next to your strength routine, with its own sessions and history." : f.type==="gym" ? "Gym training: the key movement patterns, several movements for each, with weights logged and the next weight suggested." : "Home training: movement patterns and muscle groups with bodyweight only (a floor, a wall, a chair or table)."} The calisthenics routine stays as it is.</div></div>`;
+  const gymP = S.plans.gym, gym = f.type==="gym", cardio = f.type==="cardio";
+  const goals = cardio ? CARDIO_GOALS : GOALS, lens = cardio ? CARDIO_LEN : LENGTHS, exps = cardio ? CARDIO_EXP : EXPERIENCE;
   const form = `<div class="card">
-    <h3>${(gym?gymP:home)?"Rebuild":"Build"} your ${gym?"gym":"home"} routine</h3>
-    <div class="sub">Days per week</div><div class="tools">${[2,3,4,5,6].map(n=>opt("days",n,n)).join("")}</div>
-    <div class="sub">Session length</div><div class="tools">${Object.entries(LENGTHS).map(([k,v])=>opt("len",k,v.label)).join("")}</div>
-    <div class="sub">Goal</div><div class="tools">${Object.entries(GOALS).map(([k,v])=>opt("goal",k,v.name)).join("")}</div>
-    <div class="sub">Experience</div><div class="tools">${Object.entries(EXPERIENCE).map(([k,v])=>opt("exp",k,v.name)).join("")}</div>
-    ${gym ? `<div class="sub">Equipment you can use (pull-ups and other bodyweight work are always allowed)</div><div class="tools">${Object.entries(GYM_EQUIP).map(([k,v])=>`<button type="button" class="tbtn" data-act="rfeq" data-k="${k}" aria-pressed="${f.equip.includes(k)}">${esc(v)}</button>`).join("")}</div>`
+    <h3>${(cardio?S.plans.cardio:gym?gymP:home)?"Rebuild":"Build"} your ${cardio?"cardio":gym?"gym":"home"} ${cardio?"plan":"routine"}</h3>
+    <div class="sub">${cardio?"Sessions":"Days"} per week</div><div class="tools">${[2,3,4,5,6].map(n=>opt("days",n,n)).join("")}</div>
+    <div class="sub">Session length</div><div class="tools">${Object.entries(lens).map(([k,v])=>opt("len",k,v.label)).join("")}</div>
+    <div class="sub">Goal</div><div class="tools">${Object.entries(goals).map(([k,v])=>opt("goal",k,v.name)).join("")}</div>
+    <div class="sub">Experience</div><div class="tools">${Object.entries(exps).map(([k,v])=>opt("exp",k,v.name)).join("")}</div>
+    ${cardio ? `<div class="sub">Activities you can do</div><div class="tools">${Object.entries(CARDIO_ACT).map(([k,v])=>`<button type="button" class="tbtn" data-act="rfact" data-k="${k}" aria-pressed="${f.activities.includes(k)}">${esc(v)}</button>`).join("")}</div>
+    <div class="tools"><button type="button" class="tbtn" data-act="rflow" aria-pressed="${f.lowImpact}">Low impact only (no running)</button></div>
+    <label class="cf">Your age (optional, for a rough heart rate range)<input type="number" inputmode="numeric" min="14" max="100" id="rf-age" data-rf="age" value="${esc(f.age)}"></label>
+    <div class="banner deload">If you have chest pain, unusual breathlessness, dizziness or a heart condition, check with a doctor before starting hard intervals.</div>` : ""}
+    ${cardio ? "" : gym ? `<div class="sub">Equipment you can use (pull-ups and other bodyweight work are always allowed)</div><div class="tools">${Object.entries(GYM_EQUIP).map(([k,v])=>`<button type="button" class="tbtn" data-act="rfeq" data-k="${k}" aria-pressed="${f.equip.includes(k)}">${esc(v)}</button>`).join("")}</div>`
     : `<div class="sub">Anything to work around? (optional)</div><div class="tools">${Object.entries(LIMITS).map(([k,v])=>`<button type="button" class="tbtn" data-act="rflim" data-k="${k}" aria-pressed="${f.limits.includes(k)}">${esc(v)}</button>`).join("")}</div>
     ${f.limits.length?`<div class="banner deload">If something hurts, stop and see a physiotherapist or doctor. This plan only avoids the exercises that most often aggravate it.</div>`:""}`}
     <div class="finish"><button type="button" class="btn primary" data-act="rfgen">Preview plan</button></div>
   </div>`;
   const prev = f.preview ? `<div class="block-h"><h2 id="rf-preview">Preview</h2></div>${planPreview(f.preview)}<div class="finish"><button type="button" class="btn primary" data-act="rfuse">Use this plan</button><button type="button" class="btn ghost" data-act="rfdiscard">Discard</button></div>` : "";
-  const ev = `<div class="block-h"><h2>Why these rules</h2></div><div class="card prose"><div class="sub">${esc(EVIDENCE_NOTE)}</div>${(f.type==="gym" ? EVIDENCE.concat(EVIDENCE_GYM) : EVIDENCE).map(e=>`<div><b>${esc(e.rule)}.</b> ${esc(e.use)}<div class="sub">${esc(e.text)}</div>${e.links.length?`<div class="sub">${e.links.map(([t,u])=>`<a href="${u}" target="_blank" rel="noopener">${esc(t)}</a>`).join(" · ")}</div>`:""}<div class="sub"><i>${esc(e.confidence)}</i></div></div>`).join("")}</div>`;
+  const ev = `<div class="block-h"><h2>Why these rules</h2></div><div class="card prose"><div class="sub">${esc(f.type==="cardio" ? CARDIO_NOTE : EVIDENCE_NOTE)}</div>${(f.type==="cardio" ? EVIDENCE_CARDIO : f.type==="gym" ? EVIDENCE.concat(EVIDENCE_GYM) : EVIDENCE).map(e=>`<div><b>${esc(e.rule)}.</b> ${esc(e.use)}<div class="sub">${esc(e.text)}</div>${e.links.length?`<div class="sub">${e.links.map(([t,u])=>`<a href="${u}" target="_blank" rel="noopener">${esc(t)}</a>`).join(" · ")}</div>`:""}<div class="sub"><i>${esc(e.confidence)}</i></div></div>`).join("")}</div>`;
   return `<div class="block">${active}${types}${form}${prev}${ev}</div>`;
 }
 function setRest(len){
@@ -1763,12 +2000,22 @@ document.addEventListener("click", async ev=>{
   else if(a==="edcancel"){ ui.edit = null; render() }
   else if(a==="edsave"){ saveEdit() }
   else if(a==="edrm"){ delete ui.edit.entries[b.dataset.k]; render() }
+  else if(a==="csave"){ saveCardio() }
+  else if(a==="intv"){ INTV ? stopIntervals(false) : startIntervals() }
+  else if(a==="cardiotoggle"){ S.cardioOn = S.cardioOn===false; try{ saveLocal() }catch(e){} render() }
   else if(a==="rftype"){ ui.rf.type = b.dataset.v; ui.rf.preview = null; render() }
+  else if(a==="rfact"){ const L = ui.rf.activities, k = b.dataset.k; if(L.includes(k) && L.length===1){ toast("Keep at least one activity selected.") } else { L.includes(k) ? L.splice(L.indexOf(k),1) : L.push(k); ui.rf.preview = null; render() } }
+  else if(a==="rflow"){ ui.rf.lowImpact = !ui.rf.lowImpact; ui.rf.preview = null; render() }
   else if(a==="rfeq"){ const L = ui.rf.equip, k = b.dataset.k; if(L.includes(k) && L.length===1){ toast("Keep at least one kind of equipment selected.") } else { L.includes(k) ? L.splice(L.indexOf(k),1) : L.push(k); ui.rf.preview = null; render() } }
   else if(a==="rf"){ ui.rf[b.dataset.k] = b.dataset.k==="days" ? +b.dataset.v : b.dataset.v; ui.rf.preview = null; render() }
   else if(a==="rflim"){ const L = ui.rf.limits, k = b.dataset.k; L.includes(k) ? L.splice(L.indexOf(k),1) : L.push(k); ui.rf.preview = null; render() }
-  else if(a==="rfgen"){ ui.rf.preview = ui.rf.type==="gym" ? buildGymPlan(ui.rf) : buildHomePlan(ui.rf); render(); const pv = document.getElementById("rf-preview"); if(pv) pv.scrollIntoView({behavior:"smooth"}) }
+  else if(a==="rfgen"){ ui.rf.preview = ui.rf.type==="cardio" ? buildCardioPlan({...ui.rf, age:Number(ui.rf.age)||null}) : ui.rf.type==="gym" ? buildGymPlan(ui.rf) : buildHomePlan(ui.rf); render(); const pv = document.getElementById("rf-preview"); if(pv) pv.scrollIntoView({behavior:"smooth"}) }
   else if(a==="rfdiscard"){ ui.rf.preview = null; render() }
+  else if(a==="rfuse" && ui.rf.preview && ui.rf.preview.id==="cardio"){
+    S.plans.cardio = ui.rf.preview; S.cardioOn = true; cdraft = null; LS.set(CDKEY,null); ui.rf.preview = null;
+    try{ saveLocal() }catch(e){ toast("Could not save the plan on this phone."); return }
+    tab = "train"; render(); window.scrollTo(0,0); toast("<b>Cardio plan is active.</b> Your next session is at the top of the Train tab.");
+  }
   else if(a==="rfuse"){ if(ui.rf.preview){ const id = ui.rf.preview.id, prev = S.plans[id]; S.plans[id] = ui.rf.preview; if(useRoutine(id)) ui.rf.preview = null; else { if(prev) S.plans[id] = prev; else delete S.plans[id] } } }
   else if(a==="useroutine"){ useRoutine(b.dataset.id) }
   else if(a==="askdel"){ document.getElementById("del-"+b.dataset.id).innerHTML=`<button type="button" class="btn danger" data-act="del" data-id="${b.dataset.id}">Confirm delete</button> <button type="button" class="btn ghost" data-act="nodel">Keep</button>` }
@@ -1783,6 +2030,8 @@ document.addEventListener("change", ev=>{
   const t=ev.target;
   if(t.id==="importfile"){ if(t.files && t.files[0]) importBackup(t.files[0]); t.value=""; return }
   if(t.dataset.ed && ui.edit){ editChange(t); return }
+  if(t.dataset.rf){ ui.rf[t.dataset.rf] = t.value; ui.rf.preview = null; return }
+  if(t.dataset.cf){ if(cdraft){ cdraft[t.dataset.cf] = t.value; saveCD() } return }
   if(t.dataset.act==="lval"){ draft.entries[t.dataset.ex].loads[+t.dataset.i]=Math.max(0,Number(t.value)||0); saveDraft(); return }
   if(t.dataset.act!=="val") return;
   draft.entries[t.dataset.ex].sets[+t.dataset.i]=Math.max(0,Number(t.value)||0); saveDraft(); refreshProgress(t.dataset.ex);
