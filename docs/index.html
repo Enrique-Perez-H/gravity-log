@@ -203,7 +203,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   <header class="top">
     <div>
       <h1>Ascend</h1>
-      <div class="sub" id="tagline">Full-body calisthenics, 3 sessions a week, about 45 minutes</div>
+      <div class="sub" id="tagline">Training log and planner</div>
     </div>
     <div class="store" id="store">Loading…</div>
   </header>
@@ -874,7 +874,10 @@ function render(){
   const v = document.getElementById("view");
   if(!S.loaded){ v.innerHTML = '<p class="empty">Loading your training log…</p>'; return }
   const r = R(), tg = document.getElementById("tagline");
-  if(tg) tg.textContent = r.builtin ? "Full-body calisthenics, 3 sessions a week, about 45 minutes" : `${r.name}: ${r.inputs.days} days a week, about ${LENGTHS[r.inputs.len].min} minutes`;
+  if(tg){
+    const base = r.builtin ? "Calisthenics · 2 alternating days" : `${r.name} · ${r.inputs.days} days a week · about ${LENGTHS[r.inputs.len].min} min`;
+    tg.textContent = S.plans.cardio && S.cardioOn!==false ? base+" + cardio" : base;
+  }
   v.innerHTML = tab==="train" ? viewTrain() : tab==="progress" ? viewProgress() : tab==="routine" ? viewRoutine() : viewProgram();
   startFigures();
 }
