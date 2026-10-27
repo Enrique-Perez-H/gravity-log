@@ -1,7 +1,7 @@
 {
-  "name": "Gravity Log",
-  "short_name": "Gravity Log",
-  "description": "Calisthenics training log with leverage progressions.",
+  "name": "Ascend",
+  "short_name": "Ascend",
+  "description": "Training log and routine planner: calisthenics, home, gym and cardio.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

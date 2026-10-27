@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Gravity Log</title>
+<title>Ascend</title>
 <meta name="theme-color" content="#2F45C8">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Gravity Log">
+<meta name="apple-mobile-web-app-title" content="Ascend">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png" type="image/png">
@@ -202,7 +202,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 <div class="wrap">
   <header class="top">
     <div>
-      <h1>Gravity Log</h1>
+      <h1>Ascend</h1>
       <div class="sub" id="tagline">Full-body calisthenics, 3 sessions a week, about 45 minutes</div>
     </div>
     <div class="store" id="store">Loading…</div>
@@ -736,7 +736,7 @@ async function deliver(text, type, name){
   return true;
 }
 async function exportBackup(){
-  const ok = await deliver(JSON.stringify(backupObject(),null,1), "application/json", `gravity-log-backup-${todayISO()}.json`);
+  const ok = await deliver(JSON.stringify(backupObject(),null,1), "application/json", `ascend-backup-${todayISO()}.json`);
   if(ok){ LS.set(KEY.backup, new Date().toISOString()); toast("<b>Backup saved.</b> Keep the file somewhere off this phone, such as your PC or cloud drive."); render() }
 }
 // After a finished session, offer the share sheet for a backup, at most once a week and only if the last backup is a week old.
@@ -748,7 +748,7 @@ function backupDue(){
 }
 async function autoBackup(){
   LS.set(KEY.prompt, new Date().toISOString());
-  const name = `gravity-log-backup-${todayISO()}.json`, file = new File([JSON.stringify(backupObject(),null,1)], name, {type:"application/json"});
+  const name = `ascend-backup-${todayISO()}.json`, file = new File([JSON.stringify(backupObject(),null,1)], name, {type:"application/json"});
   const again = '<button type="button" class="btn ghost" data-act="export">Save backup</button>';
   if(navigator.canShare && navigator.canShare({files:[file]})){
     try{ await navigator.share({files:[file], title:name}); LS.set(KEY.backup, new Date().toISOString()); toast("<b>Backup saved.</b> Keep the file off this phone."); render(); return }
@@ -756,12 +756,12 @@ async function autoBackup(){
   }
   toast(`<b>Time for a backup.</b> ${again}`, 12000);
 }
-async function exportCSV(){ await deliver(csvText(), "text/csv", `gravity-log-sets-${todayISO()}.csv`) }
+async function exportCSV(){ await deliver(csvText(), "text/csv", `ascend-sets-${todayISO()}.csv`) }
 function importBackup(file){
   const r = new FileReader();
   r.onload = () => {
-    let b; try{ b = JSON.parse(r.result) }catch(e){ toast("That file is not a Gravity Log backup (it isn't valid JSON)."); return }
-    if(!b || b.app!=="gravity-log" || !Array.isArray(b.sessions)){ toast("That file is not a Gravity Log backup."); return }
+    let b; try{ b = JSON.parse(r.result) }catch(e){ toast("That file is not an Ascend backup (it isn't valid JSON)."); return }
+    if(!b || b.app!=="gravity-log" || !Array.isArray(b.sessions)){ toast("That file is not an Ascend backup."); return }
     const have = new Set(S.sessions.map(s=>s.id));
     const added = b.sessions.filter(s=>s && s.id && !have.has(s.id));
     const backupNewest = Math.max(0,...b.sessions.map(s=>s.ts||0)), localNewest = Math.max(0,...S.sessions.map(s=>s.ts||0));

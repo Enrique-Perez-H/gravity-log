@@ -1,6 +1,6 @@
-# Gravity Log
+# Ascend
 
-A calisthenics training log for the phone. It is built on leverage progressions: each movement has a ladder of harder variations, and an exercise moves up a level when all three sets reach the top of their range. It runs three full-body sessions a week, alternating Day A and Day B, each about 45 minutes.
+A training log and routine planner for the phone (formerly Gravity Log; the repository, address and storage keys keep the old name so nothing breaks). It is built on leverage progressions: each movement has a ladder of harder variations, and an exercise moves up a level when all three sets reach the top of their range. It runs three full-body sessions a week, alternating Day A and Day B, each about 45 minutes.
 
 The whole app is static files in `docs/`. There is no server and no account. Your training log is stored in the phone's browser, and you move it to a PC with backup files.
 
@@ -12,7 +12,7 @@ The whole app is static files in `docs/`. There is no server and no account. You
    ```bash
    git init -b main
    git add .
-   git commit -m "Gravity Log"
+   git commit -m "Ascend"
    git remote add origin https://github.com/<your-username>/gravity-log.git
    git push -u origin main
    ```
@@ -51,7 +51,7 @@ The app then opens full screen and works offline after the first visit.
 
 ```python
 import pandas as pd
-df = pd.read_csv("gravity-log-sets-2026-11-30.csv", parse_dates=["date"])
+df = pd.read_csv("ascend-sets-2026-11-30.csv", parse_dates=["date"])
 done = df[df.done == 1]
 done.groupby(["exercise", "date"]).value.max().unstack(0).plot()
 ```
