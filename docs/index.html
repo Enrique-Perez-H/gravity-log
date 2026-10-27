@@ -113,6 +113,13 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .last{font-family:var(--mono);font-size:.75rem;color:var(--muted)}
 .lv-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
 .lv-list li{display:grid;grid-template-columns:2em 1fr auto;gap:8px;align-items:center;padding:6px 8px;border-radius:8px;font-size:.88rem}
+.tbtn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.tbtn:disabled{opacity:.5;cursor:default}
+.plan-list{margin:0;padding-left:1.1em;display:flex;flex-direction:column;gap:4px;font-size:.9rem}
+.wk{overflow-x:auto}
+.wk table{border-collapse:collapse;width:100%;font-size:.85rem}
+.wk th,.wk td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line)}
+.wk td:nth-child(n+2),.wk th:nth-child(n+2){font-family:var(--mono)}
 .lv-btns{display:flex;gap:6px;align-items:center}
 .lv-list li .lv-panel{grid-column:1/-1}
 .lv-list li.cur{background:var(--accent-soft)}
@@ -183,7 +190,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   <header class="top">
     <div>
       <h1>Gravity Log</h1>
-      <div class="sub">Full-body calisthenics, 3 sessions a week, about 45 minutes</div>
+      <div class="sub" id="tagline">Full-body calisthenics, 3 sessions a week, about 45 minutes</div>
     </div>
     <div class="store" id="store">Loading…</div>
   </header>
@@ -191,6 +198,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   <nav class="tabs" role="tablist">
     <button role="tab" id="tab-train" aria-selected="true" data-tab="train">Train</button>
     <button role="tab" id="tab-progress" aria-selected="false" data-tab="progress">Progress</button>
+    <button role="tab" id="tab-routine" aria-selected="false" data-tab="routine">Routine</button>
     <button role="tab" id="tab-program" aria-selected="false" data-tab="program">Program</button>
   </nav>
 
@@ -299,13 +307,34 @@ const EX = {
     ["Single-leg glute bridges","Reps per leg.",8,12],
     ["Single-leg hip thrusts","Shoulders on a sofa or chair. Reps per leg.",8,12],
     ["Nordic curl negatives","Feet anchored under a sofa, lower in 5 s, catch with hands.",3,6],
-    ["Nordic curls","Lower and pull back up.",3,6]]}
+    ["Nordic curls","Lower and pull back up.",3,6]]},
+  calf:{name:"Calf raise",pattern:"Legs · calves",unit:"reps",levels:[
+    ["Calf raises","Rise onto the toes, pause for a second, lower slowly. Hold a wall for balance.",15,25],
+    ["Single-leg calf raises","One leg at a time, a hand on the wall. Reps per leg.",10,20],
+    ["Single-leg calf raises, slow","Heel off a step edge, 3 seconds up and 3 seconds down. Reps per leg.",8,15]]},
+  plank:{name:"Plank",pattern:"Core · anti-extension",unit:"s",levels:[
+    ["Forearm plank","Forearms on the floor, body straight, ribs down, squeeze the glutes.",30,60],
+    ["Forearm plank, arms forward","Elbows a hand-width in front of the shoulders to lengthen the lever.",20,45],
+    ["Body saw","Forearms on a towel on a smooth floor; slide back and forth a few centimetres.",20,40]]},
+  bicep:{name:"Underhand row",pattern:"Pull · biceps",unit:"reps",levels:[
+    ["Underhand incline rows","Under a sturdy table edge or low bar, palms facing you, pull the chest to the edge.",8,12],
+    ["Underhand horizontal rows","Body nearly horizontal, heels on the floor.",6,10],
+    ["Feet-elevated underhand rows","Feet on a chair so the body is level.",5,10]]}
 };
-const START = {handstand:0,pullup:2,dip:2,pushup:1,row:0,pike:0,frontlever:0,planche:0,lsit:0,hollow:0,legraise:0,squat:1,hinge:1};
+const START = {handstand:0,pullup:2,dip:2,pushup:1,row:0,pike:0,frontlever:0,planche:0,lsit:0,hollow:0,legraise:0,squat:1,hinge:1,calf:0,plank:0,bicep:0};
 const DAYS = {
   A:{label:"Day A",focus:"Vertical pull and push, straight-arm work, squat",pairs:[["pullup","dip"],["frontlever","planche"],["squat","hollow"]]},
   B:{label:"Day B",focus:"Horizontal pull and push, compression, overhead, hinge",pairs:[["row","pushup"],["lsit","pike"],["hinge","legraise"]]}
 };
+// A routine is a list of training days; a day is a list of blocks (one exercise, or a pair done together); each item has its own number of sets.
+// The calisthenics routine is built in; generated routines (home, later gym and cardio) are saved plans with the same shape.
+const calisthenicsRoutine = () => ({
+  id:"calisthenics", name:"Calisthenics", builtin:true, warmup:null, rest:90,
+  days:Object.entries(DAYS).map(([id,D])=>({id, label:D.label, focus:D.focus, blocks:[
+    {title:"Skill, while fresh", min:7, items:[{ex:"handstand",sets:3}]},
+    ...D.pairs.map((p,k)=>({title:"Pair "+String.fromCharCode(65+k), min:8, pair:true, items:p.map(ex=>({ex,sets:3}))}))
+  ]}))
+});
 const WARMUP = ["Wrist circles, palm and back-of-hand stretches (1 min)","Arm circles and shoulder dislocates with a towel (1 min)","Scapular push-ups ×10","Scapular pulls on the bar ×8","Hollow and arch rocks (30 s each)","Bodyweight squats ×10"];
 const SETS = 3, DELOAD_EVERY = 6;
 
@@ -352,6 +381,8 @@ const ALT = {
   sl_rdl:["Single-leg Romanian deadlifts","Hinge forward on one leg, the other leg extends behind. Reps per leg.",8,12,"reps",[],["stand","rdl"]],
   glute_bridge:["Glute bridges","Squeeze at the top for a second.",12,20,"reps",[],["bridgeDown","bridge"]],
   sl_bridge:["Single-leg glute bridges","Reps per leg.",8,12,"reps",[],["bridgeDown","bridge1"]],
+  fist_pushup:["Push-ups on fists","Fists on the floor, wrists straight, elbows about 45° from the body.",5,12,"reps",[],["plank","pushDown"]],
+  box_squat:["Chair squats","Sit back to a chair and stand up, at a depth that is pain-free.",10,20,"reps",["chair"],["stand","squat"]],
   ham_walkout:["Hamstring walkouts","Bridge up, walk the feet out slowly, then back in.",6,10,"reps",[],["bridge","bridgeOut"]]
 };
 // Alternatives by exercise: [first level, ids] groups, the last group at or below the level applies.
@@ -359,7 +390,7 @@ const ALTMAP = {
   handstand:[[0,["pike_hold","frog_floor","plank_lean"]]],
   pullup:[[0,["superman","prone_y","table_row"]]],
   dip:[[0,["closegrip_pushup","bench_dip","pseudo_pushup"]]],
-  pushup:[[0,["kneel_pushup","slow_pushup"]],[2,["closegrip_pushup","slow_pushup"]]],
+  pushup:[[0,["kneel_pushup","slow_pushup","fist_pushup"]],[2,["closegrip_pushup","slow_pushup","fist_pushup"]]],
   row:[[0,["superman","prone_y"]]],
   pike:[[0,["pike_pushup","pike_slow","pike_hold"]]],
   frontlever:[[0,["superman_hold","table_row_hold","hollow_rock"]]],
@@ -367,7 +398,7 @@ const ALTMAP = {
   lsit:[[0,["floor_lsit","chair_lsit","seated_pike_lift"]]],
   hollow:[[0,["hollow_rock","dead_bug","superman_hold"]]],
   legraise:[[0,["lying_leg_raise","reverse_crunch","chair_knee_tuck","dead_bug"]]],
-  squat:[[0,["split_squat","squat"]]],
+  squat:[[0,["split_squat","cossack","box_squat"]]],
   hinge:[[0,["glute_bridge","sl_rdl"]],[1,["sl_bridge","sl_rdl"]],[3,["ham_walkout","sl_rdl"]]]
 };
 function altsFor(ex, level){
@@ -462,7 +493,8 @@ const VIS = {
   hollow:[["tuckHollow"],["hollow"],["hollow"],["hollow"]],
   legraise:[["hang","legsHang"],["hang","legsBent"],["hang","legsStraight"],["hang","toesBar"],["legsStraight","toesBar"]],
   squat:[["stand","squat"],["lungeUp","lunge"],["lungeUp","lunge"],["stand","squat"],["stand","squat"],["stand","squat"],["stand","squat"]],
-  hinge:[["bridgeDown","bridge"],["bridgeDown","bridge1"],["bridgeDown","bridge1"],["nordicUp","nordicDown"],["nordicUp","nordicDown"]]
+  hinge:[["bridgeDown","bridge"],["bridgeDown","bridge1"],["bridgeDown","bridge1"],["nordicUp","nordicDown"],["nordicUp","nordicDown"]],
+  calf:[["stand"],["stand"],["stand"]], plank:[["plank"],["plank"],["plank"]], bicep:[["rowBottom","rowTop"],["rowBottom","rowTop"],["rowBottom","rowTop"]]
 };
 
 // YouTube video ids, by exercise and level ("*" = every level). A level with no id gets a YouTube search link
@@ -499,7 +531,8 @@ const MUSCLES = {
   frontlever:{main:["back","core"],also:["arm"]}, planche:{main:["delt","core"],also:["chest","fore"]},
   lsit:{main:["core","thigh"],also:["arm","delt"]}, hollow:{main:["core"],also:["thigh"]},
   legraise:{main:["core","thigh"],also:["fore"]}, squat:{main:["thigh","glute"],also:["calf"]},
-  hinge:{main:["glute","thigh"],also:["calf"]}
+  hinge:{main:["glute","thigh"],also:["calf"]},
+  calf:{main:["calf"],also:[]}, plank:{main:["core"],also:["delt","arm"]}, bicep:{main:["arm"],also:["back","fore"]}
 };
 // Real photos (start and end) from free-exercise-db, by exercise and level; levels without one use the drawn figure.
 const PHOTO = {
@@ -629,14 +662,14 @@ function startFigures(){
 /* ---------- Storage: this device only (localStorage), with backup export/import ---------- */
 const KEY = {data:"gravity-log:data", draft:"gravity-log:draft", backup:"gravity-log:last-backup", prompt:"gravity-log:backup-prompt", autoOff:"gravity-log:auto-backup-off"};
 const LS = {get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}};
-const S = {levels:{...START}, sessions:[], loaded:false, persistent:null};
+const S = {levels:{...START}, sessions:[], routine:"calisthenics", plans:{}, loaded:false, persistent:null};
 let tab = "train", day = null, draft = LS.get(KEY.draft, null);
 
 function setStore(t){document.getElementById("store").textContent=t}
 
 async function initStore(){
   const l = LS.get(KEY.data, null);
-  if(l){ S.levels = {...START, ...l.levels}; S.sessions = (l.sessions || []).sort((a,b)=>a.ts-b.ts) }
+  if(l){ S.levels = {...START, ...l.levels}; S.sessions = (l.sessions || []).sort((a,b)=>a.ts-b.ts); S.plans = l.plans || {}; S.routine = S.plans[l.routine] ? l.routine : "calisthenics" }
   S.loaded = true; setStore("Saved on this phone"); render();
   // Ask the browser not to evict this site's storage (granted silently for installed apps in most browsers).
   try{
@@ -647,25 +680,25 @@ async function initStore(){
   }catch(e){}
   render();
 }
-function saveLocal(){ if(!LS.set(KEY.data,{levels:S.levels,sessions:S.sessions})) throw new Error("storage") }
+function saveLocal(){ if(!LS.set(KEY.data,{levels:S.levels,sessions:S.sessions,routine:S.routine,plans:S.plans})) throw new Error("storage") }
 async function saveLevels(){ saveLocal() }
 async function saveSession(s){ S.sessions.push(s); saveLocal() }
 async function deleteSession(id){ S.sessions = S.sessions.filter(s=>s.id!==id); saveLocal() }
 
 /* Backups: a full JSON file to restore, and a CSV (one row per set) to analyse on a PC. */
-function backupObject(){ return {app:"gravity-log", format:1, exported:new Date().toISOString(), levels:S.levels, sessions:S.sessions} }
+function backupObject(){ return {app:"gravity-log", format:2, exported:new Date().toISOString(), levels:S.levels, sessions:S.sessions, routine:S.routine, plans:S.plans} }
 function csvText(){
-  const rows=[["date","day","exercise","pattern","level","level_name","set","value","unit","done","substitute_for"]];
+  const rows=[["date","day","exercise","pattern","level","level_name","set","value","unit","done","substitute_for","routine"]];
   S.sessions.forEach(s=>Object.entries(s.entries||{}).forEach(([key,e])=>{
     const alt = altOf(key);
     if(alt){
       if(!ALT[alt] || !EX[e.subFor]) return;
-      e.sets.forEach((v,i)=>rows.push([s.date,s.day,ALT[alt][0],EX[e.subFor].pattern,"",ALT[alt][0],i+1,v,ALT[alt][4],e.done[i]?1:0,EX[e.subFor].name]));
+      e.sets.forEach((v,i)=>rows.push([s.date,s.day,ALT[alt][0],EX[e.subFor].pattern,"",ALT[alt][0],i+1,v,ALT[alt][4],e.done[i]?1:0,EX[e.subFor].name,s.routine||"calisthenics"]));
       return;
     }
     const ex = key;
     if(!EX[ex]) return;
-    e.sets.forEach((v,i)=>rows.push([s.date,s.day,EX[ex].name,EX[ex].pattern,e.level+1,EX[ex].levels[e.level][0],i+1,v,EX[ex].unit,e.done[i]?1:0,""]));
+    e.sets.forEach((v,i)=>rows.push([s.date,s.day,EX[ex].name,EX[ex].pattern,e.level+1,EX[ex].levels[e.level][0],i+1,v,EX[ex].unit,e.done[i]?1:0,"",s.routine||"calisthenics"]));
   }));
   return rows.map(r=>r.map(c=>{const t=String(c);return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t}).join(",")).join("\n");
 }
@@ -712,6 +745,7 @@ function importBackup(file){
     const backupNewest = Math.max(0,...b.sessions.map(s=>s.ts||0)), localNewest = Math.max(0,...S.sessions.map(s=>s.ts||0));
     S.sessions = S.sessions.concat(added).sort((a,b)=>a.ts-b.ts);
     if(b.levels && backupNewest >= localNewest) S.levels = {...START, ...b.levels};
+    if(b.plans && typeof b.plans==="object"){ Object.keys(b.plans).forEach(id=>{ if(!S.plans[id]) S.plans[id] = b.plans[id] }); if(backupNewest >= localNewest && S.plans[b.routine]) S.routine = b.routine }
     try{ saveLocal() }catch(e){ toast("Could not save the imported data on this phone."); return }
     draft = null; LS.set(KEY.draft, null);
     toast(`<b>Backup imported.</b> ${added.length} session${added.length===1?"":"s"} added; ${b.sessions.length-added.length} already here.`);
@@ -733,14 +767,29 @@ function spec(ex, e){
   const L = lv(ex,e.level);
   return {...L, unit:EX[ex].unit, needs:needsOf(ex,e.level), poses:(VIS[ex]||[])[e.level]||["stand"], alt:false};
 }
-function altLastValues(id){
+function altLastValues(id, n=SETS){
   let sets = null;
-  S.sessions.forEach(s=>Object.entries(s.entries||{}).forEach(([k,e])=>{ if(altOf(k)===id) sets = e.sets.slice(0,SETS) }));
-  return sets || Array(SETS).fill(ALT[id][2]);
+  S.sessions.forEach(s=>Object.entries(s.entries||{}).forEach(([k,e])=>{ if(altOf(k)===id) sets = e.sets }));
+  return fitSets(sets || [], n, ALT[id][2]);
 }
 const todayISO = () => { const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10) };
 const fmtDate = iso => new Date(iso+"T12:00:00").toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"});
-function nextDay(){ const last=S.sessions[S.sessions.length-1]; return last && last.day==="A" ? "B" : "A" }
+const routineById = id => id==="calisthenics" || !S.plans[id] ? calisthenicsRoutine() : S.plans[id];
+const R = () => routineById(S.routine);
+const dayOf = id => R().days.find(d=>d.id===id) || R().days[0];
+const itemsOf = D => D.blocks.flatMap(b=>b.items);
+const WARMUP_HOME = ["Easy marching or jogging in place (1 min)","Arm circles and shoulder rolls (1 min)","Hip circles and leg swings ×10 each side","Cat-cow ×8","Bodyweight squats ×10","Incline or wall push-ups ×8"];
+const warmupOf = r => r.warmup || WARMUP;
+// The day that comes next in the active routine, after the last session logged with it.
+function nextDay(){
+  const days = R().days, last = [...S.sessions].reverse().find(s=>(s.routine||"calisthenics")===S.routine);
+  const i = last ? days.findIndex(d=>d.id===last.day) : -1;
+  return days[(i+1)%days.length].id;
+}
+// A session's day label, using the routine it was logged with.
+const dayLabelOf = s => { const d = routineById(s.routine||"calisthenics").days.find(x=>x.id===s.day); return d ? d.label : "Day "+s.day };
+// Every exercise of a routine, once, in order.
+const routineExercises = r => [...new Set(r.days.flatMap(d=>itemsOf(d).map(it=>it.ex)))];
 function weekNo(){
   if(!S.sessions.length) return 1;
   const first = new Date(S.sessions[0].date+"T12:00:00"), now = new Date();
@@ -754,9 +803,10 @@ function altEntries(id){
   return out;
 }
 function entriesFor(ex){ return S.sessions.filter(s=>s.entries && s.entries[ex]).map(s=>({date:s.date,...s.entries[ex]})) }
-function lastValues(ex, level){
+const fitSets = (arr, n, fill) => Array.from({length:n}, (_,i)=> i<arr.length ? arr[i] : (arr.length ? arr[arr.length-1] : fill));
+function lastValues(ex, level, n=SETS){
   const e = entriesFor(ex).filter(x=>x.level===level).pop();
-  return e ? e.sets.slice(0,SETS) : Array(SETS).fill(lv(ex,level).min);
+  return fitSets(e ? e.sets : [], n, lv(ex,level).min);
 }
 function score(e, ex){ const L=lv(ex,e.level); const done=e.sets.filter((v,i)=>e.done[i]); const best=done.length?Math.max(...done):0; return e.level + Math.min(best/L.max,1) }
 function status(ex){
@@ -774,20 +824,23 @@ function status(ex){
 
 /* ---------- Draft (in-progress session, kept on this device) ---------- */
 function newDraft(d){
-  const entries = {};
-  DAYS[d].pairs.flat().concat("handstand").forEach(ex=>{
-    const l=S.levels[ex]; entries[ex]={level:l, sets:lastValues(ex,l), done:Array(SETS).fill(false)};
+  const entries = {}, r = R();
+  itemsOf(dayOf(d)).forEach(it=>{
+    const l=S.levels[it.ex], n=it.sets||SETS;
+    entries[it.ex] = it.sub ? {level:l, sub:it.sub, sets:altLastValues(it.sub,n), done:Array(n).fill(false)} : {level:l, sets:lastValues(it.ex,l,n), done:Array(n).fill(false)};
   });
-  return {day:d, date:todayISO(), warm:Array(WARMUP.length).fill(false), missing:[], entries};
+  return {day:d, routine:S.routine, date:todayISO(), warm:Array(warmupOf(r).length).fill(false), missing:[], entries};
 }
 function ensureDraft(){
+  if(draft && (draft.routine||"calisthenics")!==S.routine){ draft = null; day = null }
   if(!day) day = draft ? draft.day : nextDay();
+  if(!R().days.some(d=>d.id===day)) day = R().days[0].id;
   if(!draft || draft.day!==day){ draft = newDraft(day); LS.set(KEY.draft,draft) }
   if(!draft.missing) draft.missing = [];
   // keep levels in line with the program if changed elsewhere
   Object.keys(draft.entries).forEach(ex=>{
     const l=S.levels[ex];
-    if(draft.entries[ex].level!==l && !draft.entries[ex].sub && !draft.entries[ex].done.some(Boolean)){ draft.entries[ex]={level:l,sets:lastValues(ex,l),done:Array(SETS).fill(false)} }
+    if(draft.entries[ex].level!==l && !draft.entries[ex].sub && !draft.entries[ex].done.some(Boolean)){ const n=draft.entries[ex].sets.length; draft.entries[ex]={level:l,sets:lastValues(ex,l,n),done:Array(n).fill(false)} }
   });
 }
 const saveDraft = () => LS.set(KEY.draft,draft);
@@ -797,7 +850,9 @@ function render(){
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected", b.dataset.tab===tab));
   const v = document.getElementById("view");
   if(!S.loaded){ v.innerHTML = '<p class="empty">Loading your training log…</p>'; return }
-  v.innerHTML = tab==="train" ? viewTrain() : tab==="progress" ? viewProgress() : viewProgram();
+  const r = R(), tg = document.getElementById("tagline");
+  if(tg) tg.textContent = r.builtin ? "Full-body calisthenics, 3 sessions a week, about 45 minutes" : `${r.name}: ${r.inputs.days} days a week, about ${LENGTHS[r.inputs.len].min} minutes`;
+  v.innerHTML = tab==="train" ? viewTrain() : tab==="progress" ? viewProgress() : tab==="routine" ? viewRoutine() : viewProgram();
   startFigures();
 }
 
@@ -806,7 +861,7 @@ const ui = {show:new Set(), swap:new Set(), video:new Set(), frozen:new Map(), p
 const cardEl = ex => document.querySelector(`.card[data-card="${ex}"]`);
 function refreshFooter(){
   if(!draft) return;
-  const done = Object.values(draft.entries).reduce((a,e)=>a+e.done.filter(Boolean).length,0), total = Object.keys(draft.entries).length*SETS;
+  const done = Object.values(draft.entries).reduce((a,e)=>a+e.done.filter(Boolean).length,0), total = Object.values(draft.entries).reduce((a,e)=>a+e.sets.length,0);
   const c = document.getElementById("fin-count"), b = document.getElementById("fin-btn");
   if(c) c.textContent = `${done}/${total} sets done`;
   if(b) b.disabled = !done;
@@ -825,7 +880,7 @@ function swapPanel(ex, e, sp){
   const chips = Object.entries(EQ).map(([k,t])=>`<button type="button" class="chip" data-act="missing" data-k="${k}" aria-pressed="${draft.missing.includes(k)}">${esc(t)}</button>`).join("");
   const ids = altsFor(ex,e.level).filter(id=>!ALT[id][5].some(q=>draft.missing.includes(q)));
   const opts = ids.map(id=>{ const A=ALT[id];
-    return `<div class="alt-opt"><div><b>${esc(A[0])}</b><div class="last">${SETS} × ${A[2]}–${A[3]} ${A[4]==="s"?"s":"reps"}${A[5].length?" · needs "+A[5].map(q=>EQ[q].toLowerCase()).join(", "):" · no equipment"}</div></div>
+    return `<div class="alt-opt"><div><b>${esc(A[0])}</b><div class="last">${e.sets.length} × ${A[2]}–${A[3]} ${A[4]==="s"?"s":"reps"}${A[5].length?" · needs "+A[5].map(q=>EQ[q].toLowerCase()).join(", "):" · no equipment"}</div></div>
       <button type="button" class="btn ghost" data-act="pick" data-ex="${ex}" data-id="${id}" ${e.sub===id?"disabled":""}>${e.sub===id?"In use":"Use"}</button>
       <div class="cue">${esc(A[1])}</div></div>`}).join("");
   return `<div class="panel">
@@ -854,7 +909,7 @@ function showPanel(ex, e, sp){
 }
 function targetHTML(sp, e){
   const unit = sp.unit==="s" ? "s" : "reps", allTop = !e.sub && e.sets.every((v,i)=>e.done[i] && v>=sp.max);
-  return `Target ${SETS} × ${sp.min}–${sp.max} ${unit}${allTop?' · <span class="hit">top of range hit, levels up on finish</span>':''}`;
+  return `Target ${e.sets.length} × ${sp.min}–${sp.max} ${unit}${allTop?' · <span class="hit">top of range hit, levels up on finish</span>':''}`;
 }
 const holdRunning = (ex,i) => HOLD && HOLD.ex===ex && HOLD.i===i;
 function exCard(ex){
@@ -893,33 +948,32 @@ function exCard(ex){
 
 function viewTrain(){
   ensureDraft();
-  const D = DAYS[day], doneSets = Object.values(draft.entries).reduce((a,e)=>a+e.done.filter(Boolean).length,0);
-  const totalSets = Object.keys(draft.entries).length*SETS;
+  const r = R(), D = dayOf(day), doneSets = Object.values(draft.entries).reduce((a,e)=>a+e.done.filter(Boolean).length,0);
+  const totalSets = Object.values(draft.entries).reduce((a,e)=>a+e.sets.length,0);
   const deload = isDeload() ? `<div class="banner deload"><b>Deload week (week ${weekNo()}).</b> Do 2 sets per exercise and stop 1–2 reps short of your best. Levels don't change this week.</div>` : "";
-  const first = !S.sessions.length ? `<div class="banner info">Starting levels are set from your current numbers: 3–4 pull-ups, 8–10 push-ups, 3–4 dips, plank 30–40 s. Adjust any of them in Program if the first session feels too easy or too hard.</div>` : "";
+  const first = !S.sessions.length && r.id==="calisthenics" ? `<div class="banner info">Starting levels are set from your current numbers: 3–4 pull-ups, 8–10 push-ups, 3–4 dips, plank 30–40 s. Adjust any of them in Program if the first session feels too easy or too hard.</div>` : "";
   const lb = lastBackupDays();
   const remind = S.sessions.length>=3 && (lb===null || lb>=14) ? `<div class="banner backup"><b>No backup for ${lb===null?"this log yet":lb+" days"}.</b> Save one in Progress, under Your data.</div>` : "";
+  const effort = r.effort ? `<div class="banner info"><b>${esc(r.name)}.</b> ${esc(r.effort)}</div>` : "";
+  const warm = warmupOf(r);
+  let n = 1;
+  const blocks = D.blocks.map(bk=>`<div class="block-h"><h3>${++n} · ${esc(bk.title)}</h3><span class="min">${bk.pair?`alternate, <span class="restn">${rest.len}</span> s rest · `:""}~${bk.min} min</span></div>${bk.pair ? `<div class="pair">${bk.items.map(it=>exCard(it.ex)).join("")}</div>` : bk.items.map(it=>exCard(it.ex)).join("")}`).join("");
   return `<div class="block">
-    ${first}${deload}${remind}
+    ${first}${deload}${remind}${effort}
     <div class="daybar">
-      <div><h2>${D.label}</h2><div class="sub">${esc(D.focus)} · ${fmtDate(draft.date)}</div></div>
-      <div class="seg" role="group" aria-label="Session">
-        <button type="button" data-act="day" data-day="A" aria-pressed="${day==="A"}">Day A</button>
-        <button type="button" data-act="day" data-day="B" aria-pressed="${day==="B"}">Day B</button>
-      </div>
+      <div><h2>${esc(D.label)}</h2><div class="sub">${esc(D.focus)} · ${fmtDate(draft.date)}</div></div>
+      <div class="seg" role="group" aria-label="Session">${r.days.map(d=>`<button type="button" data-act="day" data-day="${d.id}" aria-pressed="${day===d.id}">${esc(r.days.length>2?d.label.replace("Day ","D"):d.label)}</button>`).join("")}</div>
     </div>
-    <div class="block-h"><h3>1 · Warm-up</h3><span class="min">~7 min</span></div>
-    <div class="checklist">${WARMUP.map((w,i)=>`<button type="button" class="check" data-act="warm" data-i="${i}" aria-pressed="${draft.warm[i]}"><span class="box">✓</span><span class="t">${esc(w)}</span></button>`).join("")}</div>
-    <div class="block-h"><h3>2 · Skill, while fresh</h3><span class="min">~7 min</span></div>
-    ${exCard("handstand")}
-    ${D.pairs.map((p,k)=>`<div class="block-h"><h3>${k+3} · Pair ${String.fromCharCode(65+k)}</h3><span class="min">alternate, <span class="restn">${rest.len}</span> s rest · ~8 min</span></div><div class="pair">${exCard(p[0])}${exCard(p[1])}</div>`).join("")}
+    <div class="block-h"><h3>1 · Warm-up</h3><span class="min">~${r.id==="calisthenics"?7:5} min</span></div>
+    <div class="checklist">${warm.map((w,i)=>`<button type="button" class="check" data-act="warm" data-i="${i}" aria-pressed="${draft.warm[i]}"><span class="box">✓</span><span class="t">${esc(w)}</span></button>`).join("")}</div>
+    ${blocks}
     <div class="card">
       <div class="finish">
         <button type="button" id="fin-btn" class="btn primary" data-act="finish" ${doneSets?"":"disabled"}>Finish session</button>
         <button type="button" class="btn ghost" data-act="resetdraft">Clear</button>
         <span class="sub" id="fin-count">${doneSets}/${totalSets} sets done</span>
       </div>
-      <div class="sub">On finish, an exercise moves up a level when all ${SETS} sets are done at the top of the range.</div>
+      <div class="sub">On finish, an exercise moves up a level when all its sets are done at the top of the range.</div>
     </div>
   </div>`;
 }
@@ -942,7 +996,7 @@ function spark(ex, es, pts, label){
 function calendar(){
   const weeks=12, cell=16, gap=4, now=new Date(); now.setHours(12,0,0,0);
   const monday = new Date(now); monday.setDate(now.getDate()-((now.getDay()+6)%7)-7*(weeks-1));
-  const by = {}; S.sessions.forEach(s=>{ by[s.date]=s.day });
+  const by = {}; S.sessions.forEach(s=>{ const days=routineById(s.routine||"calisthenics").days; by[s.date]=days.findIndex(d=>d.id===s.day)%2===0?"A":"B" });
   let out=""; const lab=["M","T","W","T","F","S","S"];
   for(let r=0;r<7;r++) out+=`<text x="0" y="${22+r*(cell+gap)+12}" font-size="10" fill="var(--muted)" font-family="var(--mono)">${lab[r]}</text>`;
   for(let w=0;w<weeks;w++){
@@ -962,6 +1016,7 @@ function calendar(){
 
 // Editing a finished session: a working copy in ui.edit, written back on Save. Levels are never recalculated.
 function altChoices(subFor){ return [...new Set((ALTMAP[subFor]||[]).flatMap(([,ids])=>ids))] }
+const editDays = () => { const s = ui.edit && S.sessions.find(x=>x.id===ui.edit.id); return routineById((s&&s.routine)||"calisthenics").days };
 function sessionEditHTML(){
   const d = ui.edit;
   const rows = Object.entries(d.entries).map(([k,e])=>{
@@ -974,7 +1029,7 @@ function sessionEditHTML(){
   }).join("");
   return `<div class="ed">
     <div class="ed-top"><label>Date <input type="date" data-ed="date" value="${esc(d.date)}"></label>
-      <label>Day <select data-ed="day"><option ${d.day==="A"?"selected":""}>A</option><option ${d.day==="B"?"selected":""}>B</option></select></label></div>
+      <label>Day <select data-ed="day">${editDays().map(x=>`<option value="${esc(x.id)}" ${d.day===x.id?"selected":""}>${esc(x.label)}</option>`).join("")}</select></label></div>
     ${rows}
     <div class="sub">Saving does not change your levels or level-up history; adjust levels in Program if needed.</div>
     <div class="finish"><button type="button" class="btn primary" data-act="edsave">Save changes</button><button type="button" class="btn ghost" data-act="edcancel">Cancel</button></div>
@@ -1026,7 +1081,7 @@ function viewProgress(){
   const monday=new Date(); monday.setHours(0,0,0,0); monday.setDate(monday.getDate()-((monday.getDay()+6)%7));
   const thisWeek=S.sessions.filter(s=>new Date(s.date+"T12:00:00")>=monday).length;
   const ups=S.sessions.reduce((a,s)=>a+(s.levelUps||[]).length,0);
-  const allEx=["handstand",...DAYS.A.pairs.flat(),...DAYS.B.pairs.flat()];
+  const allEx=routineExercises(R());
   const cards = allEx.map(ex=>{
     const cur=S.levels[ex], L=lv(ex,cur), st=status(ex), es=entriesFor(ex), last=es[es.length-1];
     const tip = st.cls==="stall" ? `<div class="cue">Three sessions without improvement. Drop one level for two weeks, then build back. Check sleep and rest days too.</div>` : "";
@@ -1042,7 +1097,7 @@ function viewProgress(){
     const sets=Object.values(s.entries||{}).reduce((a,e)=>a+e.done.filter(Boolean).length,0);
     const ups=(s.levelUps||[]).map(ex=>EX[ex]?EX[ex].name:ex).join(", ");
     const swaps=Object.entries(s.entries||{}).filter(([k])=>altOf(k)).map(([k,e])=>ALT[altOf(k)] ? ALT[altOf(k)][0]+(EX[e.subFor]?" for "+EX[e.subFor].name:"") : null).filter(Boolean).join(", ");
-    return `<div class="card"><div class="row"><div><b>${fmtDate(s.date)}</b> · Day ${s.day}<div class="meta">${sets} sets${ups?` · level-up: ${esc(ups)}`:""}${swaps?` · swaps: ${esc(swaps)}`:""}</div></div>
+    return `<div class="card"><div class="row"><div><b>${fmtDate(s.date)}</b> · ${esc(dayLabelOf(s))}${s.routine&&s.routine!=="calisthenics"&&S.plans[s.routine]?" · "+esc(S.plans[s.routine].name):""}<div class="meta">${sets} sets${ups?` · level-up: ${esc(ups)}`:""}${swaps?` · swaps: ${esc(swaps)}`:""}</div></div>
       <span id="del-${s.id}"><button type="button" class="btn ghost" data-act="edit" data-id="${s.id}">Edit</button> <button type="button" class="btn ghost" data-act="askdel" data-id="${s.id}">Delete</button></span></div>${ui.edit && ui.edit.id===s.id ? sessionEditHTML() : ""}</div>`;
   }).join("");
   return `<div class="block">
@@ -1075,14 +1130,8 @@ function viewProgress(){
 
 // The same photo or figure, muscles and video as on Train, for any level of a ladder.
 function progPanel(ex, i){ const e = {level:i}; return showPanel(ex, e, spec(ex,e)) }
-function viewProgram(){
-  const allEx=["handstand",...DAYS.A.pairs.flat(),...DAYS.B.pairs.flat()];
-  const ladders = allEx.map(ex=>`<div class="card">
-    <div class="ex-top"><div><div class="pattern">${esc(EX[ex].pattern)}</div><h3>${esc(EX[ex].name)}</h3></div><span class="lvl">${unitTxt(ex)}</span></div>
-    <ul class="lv-list">${EX[ex].levels.map((L,i)=>`<li class="${i===S.levels[ex]?"cur":""}"><span class="k">${i+1}</span><span>${esc(L[0])} <span class="r">${L[2]}–${L[3]}</span></span><span class="lv-btns">${i===S.levels[ex]?'<span class="pill new">Current</span>':`<button type="button" data-act="setlvl" data-ex="${ex}" data-i="${i}">Set</button>`}<button type="button" data-act="plevel" data-ex="${ex}" data-i="${i}" aria-expanded="${ui.prog.get(ex)===i}">Show</button></span>${ui.prog.get(ex)===i?`<div class="lv-panel">${progPanel(ex,i)}</div>`:""}</li>`).join("")}</ul>
-  </div>`).join("");
-  return `<div class="block">
-    <div class="card prose">
+function programProse(){
+  return `<div class="card prose">
       <h2>How the program works</h2>
       <ul>
         <li><b>Schedule.</b> Three full-body sessions a week on non-consecutive days, alternating Day A and Day B (A-B-A one week, B-A-B the next).</li>
@@ -1094,10 +1143,237 @@ function viewProgram(){
         <li><b>Stalls.</b> Three sessions at the same level without improvement is a stall. Drop one level for two weeks and build back.</li>
         <li><b>Equipment.</b> Pull-up bar for pull-ups, hangs and leg raises; parallettes for L-sits, planche leans and deeper push-ups; dips need parallel bars or two sturdy chairs; rows need a sturdy table edge or a low bar.</li>
       </ul>
-    </div>
+    </div>`;
+}
+function homeProse(){
+  const r = R(), i = r.inputs || {};
+  return `<div class="card prose">
+      <h2>${esc(r.name)}</h2>
+      <ul>
+        <li><b>Plan.</b> ${r.days.length} days a week, ${esc(LENGTHS[i.len]?LENGTHS[i.len].label:"")}, goal: ${esc(GOALS[i.goal]?GOALS[i.goal].name:"")}. Built in the Routine tab, with the sources for every rule.</li>
+        <li><b>Progression.</b> Double progression: when all sets reach the top of the rep range, the exercise moves up a level. Each movement has a ladder from easier to harder variations.</li>
+        <li><b>Effort.</b> ${esc(r.effort||"")}</li>
+        <li><b>Deloads.</b> Every ${DELOAD_EVERY}th week is lighter: 2 sets, stop short of your best, no level changes.</li>
+      </ul>
+    </div>`;
+}
+function viewProgram(){
+  const allEx=routineExercises(R());
+  const ladders = allEx.map(ex=>`<div class="card">
+    <div class="ex-top"><div><div class="pattern">${esc(EX[ex].pattern)}</div><h3>${esc(EX[ex].name)}</h3></div><span class="lvl">${unitTxt(ex)}</span></div>
+    <ul class="lv-list">${EX[ex].levels.map((L,i)=>`<li class="${i===S.levels[ex]?"cur":""}"><span class="k">${i+1}</span><span>${esc(L[0])} <span class="r">${L[2]}–${L[3]}</span></span><span class="lv-btns">${i===S.levels[ex]?'<span class="pill new">Current</span>':`<button type="button" data-act="setlvl" data-ex="${ex}" data-i="${i}">Set</button>`}<button type="button" data-act="plevel" data-ex="${ex}" data-i="${i}" aria-expanded="${ui.prog.get(ex)===i}">Show</button></span>${ui.prog.get(ex)===i?`<div class="lv-panel">${progPanel(ex,i)}</div>`:""}</li>`).join("")}</ul>
+  </div>`).join("");
+  return `<div class="block">
+    ${R().builtin ? programProse() : homeProse()}
     <div class="block-h"><h2>Ladders</h2><span class="sub">Ranges are per set</span></div>
     <div class="grid2">${ladders}</div>
   </div>`;
+}
+
+
+/* ---------- Routine generator: home training ---------- */
+// Rules and sources are shown in the Routine tab (EVIDENCE below). Weekly hard sets per muscle, for someone with some experience.
+const GOALS = {
+  general:{name:"General fitness", rest:90, effort:"Most sets 2–3 reps before failure; take the last set of each exercise to about 1 rep before failure. Rest about 90 seconds."},
+  muscle:{name:"Build muscle", rest:90, effort:"Most sets 1–3 reps before failure and the last set of each exercise to 0–1. Rest 90–120 seconds. Add a rep, or a harder variation, whenever you can."},
+  strength:{name:"Build strength", rest:120, effort:"Use the hardest variation you can do for 5–8 clean reps and stay 2–3 reps before failure. Rest about 2 minutes between sets."}
+};
+const LENGTHS = {short:{label:"short, about 30 minutes", sets:10, min:30}, mid:{label:"mid, about 45 minutes", sets:16, min:45}, long:{label:"long, 60–75 minutes", sets:22, min:65}};
+const EXPERIENCE = {beginner:{name:"Beginner", mult:.75}, intermediate:{name:"Some experience", mult:1}, advanced:{name:"Advanced", mult:1.15}};
+const LIMITS = {wrist:"Wrist pain", shoulder:"Shoulder pain", knee:"Knee pain", back:"Lower-back pain"};
+const MUSC = ["chest","back","delts","triceps","biceps","quads","hamglute","calves","core"];
+const MUSC_NAME = {chest:"Chest", back:"Back", delts:"Shoulders", triceps:"Triceps", biceps:"Biceps", quads:"Quads", hamglute:"Glutes and hamstrings", calves:"Calves", core:"Core"};
+const TARGETS = {
+  general:{chest:6,back:6,delts:4,triceps:3,biceps:3,quads:6,hamglute:6,calves:3,core:4},
+  muscle:{chest:12,back:12,delts:8,triceps:8,biceps:8,quads:12,hamglute:10,calves:8,core:6},
+  strength:{chest:6,back:6,delts:5,triceps:3,biceps:3,quads:6,hamglute:6,calves:2,core:3}
+};
+// The exercise that trains each muscle at home, and what it also works (a fraction of a set for each set done).
+const HOME_EX = {
+  chest:{ex:"pushup",also:{delts:.5,triceps:.5}}, back:{ex:"row",also:{biceps:.5}}, delts:{ex:"pike",also:{triceps:.5}},
+  triceps:{ex:"dip",sub:"bench_dip",also:{chest:.5,delts:.25}}, biceps:{ex:"bicep",also:{back:.5}},
+  quads:{ex:"squat",also:{hamglute:.5}}, hamglute:{ex:"hinge",also:{}}, calves:{ex:"calf",also:{}}, core:{ex:"plank",also:{}}
+};
+const PRIORITY = ["quads","chest","back","hamglute","delts","core","triceps","biceps","calves"];
+const SPLITS = {2:["full","full"], 3:["full","full","full"], 4:["upper","lower","upper","lower"], 5:["push","pull","legs","upper","lower"], 6:["push","pull","legs","push","pull","legs"]};
+const DAY_MUSCLES = {
+  full:MUSC, upper:["chest","back","delts","triceps","biceps","core"], lower:["quads","hamglute","calves","core"],
+  push:["chest","delts","triceps","core"], pull:["back","biceps","core","hamglute"], legs:["quads","hamglute","calves","core"]
+};
+const DAY_FOCUS = {full:"Full body", upper:"Upper body", lower:"Lower body", push:"Push: chest, shoulders, triceps", pull:"Pull: back, biceps, hamstrings", legs:"Legs and core"};
+const SET_MIN = 2.5; // minutes per working set, rest included
+
+function buildHomePlan(inp){
+  const g = inp.goal, B = LENGTHS[inp.len].sets, C = inp.days*B, mult = EXPERIENCE[inp.exp].mult, lim = new Set(inp.limits||[]), notes = [];
+  // 1. Weekly direct sets per muscle: the target, less what other exercises already give it.
+  const T = {}; MUSC.forEach(m=>{ T[m] = Math.round(TARGETS[g][m]*mult) });
+  const skip = new Set();
+  if(lim.has("wrist") || lim.has("shoulder")) skip.add("delts");
+  if(lim.has("shoulder")) skip.add("triceps");
+  const direct = {};
+  ["chest","back","quads","hamglute"].forEach(m=>{ direct[m] = T[m] });
+  const indirect = m => Object.entries(direct).reduce((a,[k,s])=>a+((HOME_EX[k].also[m]||0)*s), 0);
+  ["delts","triceps","biceps"].forEach(m=>{ const need = Math.round(T[m]-indirect(m)); direct[m] = !skip.has(m) && need>=2 ? need : 0 });
+  direct.calves = T.calves>=2 ? T.calves : 0; direct.core = T.core>=2 ? T.core : 0;
+  // 2. Fit the week to the time available: scale down, then drop the least important work.
+  const sum = o => Object.values(o).reduce((a,b)=>a+b,0);
+  if(sum(direct) > C){ const f = C/sum(direct); MUSC.forEach(m=>{ direct[m] = Math.round(direct[m]*f) }) }
+  MUSC.forEach(m=>{ if(direct[m]===1) direct[m] = 0 });
+  const last = fn => [...PRIORITY].reverse().find(fn);
+  // Longer sessions get more volume, up to one and a half times the target, spread over the muscles furthest below it.
+  const ratio = m => (direct[m]+indirect(m))/Math.max(1,T[m]);
+  while(sum(direct) < C*0.9){
+    const c = PRIORITY.filter(m=>!skip.has(m) && T[m]>=2 && direct[m]+indirect(m) < T[m]*1.5).sort((a,b)=>ratio(a)-ratio(b))[0];
+    if(!c) break;
+    direct[c] += direct[c] ? 1 : 2;
+  }
+  while(sum(direct) > C){ const c = last(m=>direct[m]>2); if(c){ direct[c]--; continue } const d = last(m=>direct[m]>0); direct[d] = 0 }
+  // 3. Put each muscle's sets on the days that train it, spread through the week.
+  const days = SPLITS[inp.days].map((type,i)=>({id:"H"+(i+1), label:"Day "+(i+1), type, sets:{}}));
+  const load = d => sum(d.sets);
+  PRIORITY.forEach(m=>{
+    const s = direct[m]; if(!s) return;
+    const avail = days.filter(d=>DAY_MUSCLES[d.type].includes(m)); if(!avail.length) return;
+    let o = Math.min(avail.length, Math.max(1, Math.min(3, Math.floor(s/2))));
+    while(s/o>5 && o<avail.length) o++;
+    let chosen;
+    if(o>=avail.length) chosen = avail;
+    else if(o===1) chosen = [avail.reduce((a,d)=>load(d)<load(a)?d:a, avail[0])];
+    else chosen = Array.from({length:o}, (_,k)=>avail[Math.round(k*(avail.length-1)/(o-1))]);
+    const base = Math.floor(s/o), extra = s%o;
+    chosen.forEach((d,k)=>{ d.sets[m] = Math.min(6, base+(k<extra?1:0)) });
+  });
+  // 4. Keep each day inside its time: trim the least important work down to two sets, then drop it.
+  days.forEach(d=>{ while(load(d) > B){ const c = last(m=>d.sets[m]>2); if(c){ d.sets[c]--; continue } const x = last(m=>d.sets[m]>0); delete d.sets[x] } });
+  // 5. Turn sets into exercises: legs first, then push and pull in pairs, then calves and core.
+  let coreN = 0;
+  const itemOf = m => {
+    if(m==="core") return {ex:(coreN++%2===0 || lim.has("back")) ? "plank" : "hollow"};
+    const e = HOME_EX[m], it = {ex:e.ex}; if(e.sub) it.sub = e.sub;
+    if(m==="chest" && lim.has("wrist")) it.sub = "fist_pushup";
+    if(m==="quads" && lim.has("knee")) it.sub = "box_squat";
+    return it;
+  };
+  const FAMILIES = [["quads","hamglute"],["chest","back","delts","biceps","triceps"],["calves","core"]];
+  const dsets = {};
+  days.forEach(d=>{
+    const blocks = []; let pairNo = 0;
+    FAMILIES.forEach(fam=>{
+      const items = fam.filter(m=>d.sets[m]).map(m=>({...itemOf(m), sets:d.sets[m], muscle:m}));
+      for(let i=0;i<items.length;i+=2){
+        const group = items.slice(i,i+2), total = sum(group.map(x=>x.sets)), pair = group.length===2;
+        group.forEach(x=>{ dsets[x.muscle] = (dsets[x.muscle]||0)+x.sets });
+        blocks.push({title: pair ? "Pair "+String.fromCharCode(65+pairNo++) : "Solo", min:Math.round(total*SET_MIN), pair, items:group.map(({muscle,...it})=>it)});
+      }
+    });
+    d.blocks = blocks; d.setCount = load(d); d.min = Math.round(5+load(d)*SET_MIN); d.focus = DAY_FOCUS[d.type];
+  });
+  // 6. The weekly picture: what each muscle really gets.
+  const weekly = {};
+  MUSC.forEach(m=>{
+    const ind = Object.entries(dsets).reduce((a,[k,s])=>a+((HOME_EX[k].also[m]||0)*s), 0);
+    weekly[m] = {direct:dsets[m]||0, indirect:Math.round(ind*2)/2, target:T[m]};
+  });
+  const below = MUSC.filter(m=>weekly[m].direct+weekly[m].indirect < 0.8*weekly[m].target);
+  if(below.length){
+    const missing = Math.round(below.reduce((a,m)=>a+weekly[m].target-weekly[m].direct-weekly[m].indirect, 0));
+    notes.push(`The time you chose does not fit the full ${GOALS[g].name.toLowerCase()} volume: ${below.map(m=>`${MUSC_NAME[m].toLowerCase()} ${Math.round(weekly[m].direct+weekly[m].indirect)} of ${weekly[m].target}`).join(", ")} weekly sets. About ${missing} more sets a week, roughly ${Math.round(missing*SET_MIN)} more minutes, would close the gap: longer sessions or another day.`);
+  }
+  if(!weekly.biceps.direct && weekly.biceps.indirect) notes.push("Biceps get their work from the rows; there is no separate biceps exercise at this volume.");
+  if(skip.has("delts")) notes.push("Overhead pike push-ups were left out because of the pain you noted. Shoulders still get indirect work from push-ups.");
+  if(skip.has("triceps")) notes.push("Chair dips were left out because of shoulder pain. Triceps still work in push-ups.");
+  if(lim.has("wrist")) notes.push("Push-ups use the fist variation and planks are on the forearms to keep the wrists straight.");
+  if(lim.has("knee")) notes.push("Squats are chair squats at a depth that does not hurt.");
+  if(lim.has("back")) notes.push("Core work is planks only, and the glute bridges stay the easiest level until they feel fine.");
+  if(inp.limits && inp.limits.length) notes.push("Stop an exercise that causes sharp or lasting pain. Persistent pain is a reason to see a physiotherapist or doctor before continuing.");
+  return {
+    id:"home", name:"Home training", created:new Date().toISOString(), inputs:{days:inp.days, len:inp.len, goal:inp.goal, exp:inp.exp, limits:[...(inp.limits||[])]},
+    rest:GOALS[g].rest, effort:GOALS[g].effort, warmup:WARMUP_HOME, weekly, notes,
+    days:days.map(({id,label,focus,blocks,setCount,min})=>({id,label,focus,blocks,setCount,min}))
+  };
+}
+
+const EVIDENCE = [
+  {rule:"Weekly hard sets per muscle", use:"General fitness 3–6 up to muscle gain 8–12, depending on experience and the time you have.",
+   text:"Israetel puts maintenance near 6 sets, the start of growth near 6–10 and the best range near 10–20. Nippard is commonly cited at 10–20. Ethier argues about 3 may maintain gains and uses about 6 in his sample plan. A 2024 preprint finds diminishing returns past roughly 11 sets, but its figures vary between versions.",
+   links:[["Renaissance Periodization: volume landmarks","https://renaissanceperiodization.com/expert-advice/training-volume-landmarks-muscle-growth"],["Nippard on hypertrophy (summary)","https://www.maleoptimal.co.uk/guides/jeff-nippard-hypertrophy-science"],["Ethier on 30-minute training","https://barbend.com/news/jeremy-ethier-improved-training-efficiency/"],["Dose-response preprint (not peer reviewed)","https://sportrxiv.org/index.php/server/preprint/download/460/967/908"]],
+   confidence:"Medium. The three disagree (minimal dose versus higher volume), and most figures come from secondary summaries."},
+  {rule:"Frequency", use:"Each muscle about twice a week when you have the days; two days a week means full body both days.",
+   text:"A 2019 meta-analysis found frequency matters little once total volume is equal. An earlier 2016 meta-analysis favoured twice a week. Nippard recommends two or more. Twice is a sensible default, not a proven requirement.",
+   links:[["Schoenfeld et al. 2019 (record)","https://lida.sport-iat.de/ta/Record/4052540?lng=en"],["Schoenfeld et al. 2016","https://pubmed.ncbi.nlm.nih.gov/27102172/"]],
+   confidence:"Medium. The two meta-analyses reached different conclusions."},
+  {rule:"Effort", use:"Most sets 1–3 reps before failure, the last set of each exercise closer; strength work stays further from failure.",
+   text:"Bodyweight loads are light, and low-load sets grow muscle as well as heavy ones when taken close to failure. A 2024 meta-regression finds only a modest benefit for muscle from getting closer to failure and none clearly for strength. Nippard is reported as 2–3 reps in reserve normally, closer when short of time.",
+   links:[["Lopez et al. 2021: load and hypertrophy","https://pmc.ncbi.nlm.nih.gov/articles/PMC7706639/"],["Robinson et al. 2024: proximity to failure","https://rke.abertay.ac.uk/en/publications/exploring-the-dose-response-relationship-between-estimated-resist/"]],
+   confidence:"Medium. No studies cover bodyweight-only programs; one small study found push-ups to failure grew muscle like bench press in untrained men."},
+  {rule:"Rest between sets", use:"About 90 seconds, 2 minutes for strength.",
+   text:"A 2024 meta-analysis found a small edge for rests over 60 seconds and nothing clear beyond 90.",
+   links:[["Singer et al. 2024","https://www.frontiersin.org/journals/sports-and-active-living/articles/10.3389/fspor.2024.1429789/epub"]],
+   confidence:"Medium."},
+  {rule:"Progression", use:"Double progression: reach the top of the rep range on every set, then move to a harder variation.",
+   text:"Standard practice among the three; it is also how the calisthenics routine already works.", links:[], confidence:"Convention more than a tested protocol."}
+];
+const EVIDENCE_NOTE = "These are general guidelines, not medical advice. The primary papers and the three creators' videos were not read; the figures come from articles that summarise them, so check the links.";
+
+/* ---------- Routine tab ---------- */
+ui.rf = {days:3, len:"mid", goal:"general", exp:"intermediate", limits:[], preview:null};
+function planSummary(p){ const i = p.inputs; return `${i.days} days a week · ${LENGTHS[i.len].label} · ${GOALS[i.goal].name} · ${EXPERIENCE[i.exp].name.toLowerCase()}${i.limits.length?" · "+i.limits.map(k=>LIMITS[k].toLowerCase()).join(", "):""}` }
+const itemName = it => it.sub ? ALT[it.sub][0] : lv(it.ex, S.levels[it.ex]).name;
+function planPreview(p){
+  const dayCards = p.days.map(d=>`<div class="card"><div class="ex-top"><div><h3>${esc(d.label)}</h3><div class="sub">${esc(d.focus)}</div></div><span class="lvl">${d.setCount} sets · ~${d.min} min</span></div>
+    <ul class="plan-list">${d.blocks.map(b=>`<li>${b.items.map(it=>`<b>${esc(itemName(it))}</b> ${it.sets} sets`).join(b.pair?" <span class=sub>with</span> ":"")}</li>`).join("")}</ul></div>`).join("");
+  const rows = MUSC.map(m=>{ const w = p.weekly[m], eff = w.direct+w.indirect, ok = eff>=.8*w.target;
+    return `<tr><td>${MUSC_NAME[m]}</td><td>${w.direct}</td><td>${w.indirect||"–"}</td><td>${w.target}</td><td><span class="pill ${ok?"ok":"stall"}">${ok?"on target":"below"}</span></td></tr>` }).join("");
+  return `<div class="block">
+    <div class="sub">${esc(planSummary(p))}</div>
+    <div class="grid2">${dayCards}</div>
+    <div class="card"><h3>Weekly sets per muscle</h3><div class="wk"><table><thead><tr><th>Muscle</th><th>Direct</th><th>Indirect</th><th>Target</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="sub">Direct = sets of an exercise made for that muscle. Indirect = the share it gets from other exercises (half a set each). Target = what the goal and your experience call for.</div></div>
+    ${p.notes.length?`<div class="card"><h3>Notes</h3><ul class="plan-list">${p.notes.map(n=>`<li>${esc(n)}</li>`).join("")}</ul></div>`:""}
+    <div class="sub"><b>Effort:</b> ${esc(p.effort)}</div>
+  </div>`;
+}
+function viewRoutine(){
+  const f = ui.rf, r = R(), home = S.plans.home;
+  const opt = (k,v,label) => `<button type="button" class="tbtn" data-act="rf" data-k="${k}" data-v="${v}" aria-pressed="${f[k]==v}">${esc(label)}</button>`;
+  const active = `<div class="card">
+    <div class="block-h"><h3>Active routine</h3><span class="pill new">${esc(r.name)}</span></div>
+    <div class="sub">${r.builtin ? "Skill-based calisthenics: two alternating full-body days with leverage ladders." : esc(planSummary(r))}</div>
+    <div class="data-actions">
+      ${S.routine!=="calisthenics"?`<button type="button" class="btn ghost" data-act="useroutine" data-id="calisthenics">Switch to Calisthenics</button>`:""}
+      ${home && S.routine!=="home"?`<button type="button" class="btn ghost" data-act="useroutine" data-id="home">Switch to Home training</button>`:""}
+    </div></div>`;
+  const types = `<div class="card"><h3>Routine types</h3><div class="tools">
+    <button type="button" class="tbtn" aria-pressed="true">Home training</button>
+    <button type="button" class="tbtn" disabled>Gym · soon</button>
+    <button type="button" class="tbtn" disabled>Cardio · soon</button></div>
+    <div class="sub">Home training: movement patterns and muscle groups with bodyweight only (a floor, a wall, a chair or table). The calisthenics routine stays as it is.</div></div>`;
+  const form = `<div class="card">
+    <h3>${home?"Rebuild":"Build"} your home routine</h3>
+    <div class="sub">Days per week</div><div class="tools">${[2,3,4,5,6].map(n=>opt("days",n,n)).join("")}</div>
+    <div class="sub">Session length</div><div class="tools">${Object.entries(LENGTHS).map(([k,v])=>opt("len",k,v.label)).join("")}</div>
+    <div class="sub">Goal</div><div class="tools">${Object.entries(GOALS).map(([k,v])=>opt("goal",k,v.name)).join("")}</div>
+    <div class="sub">Experience</div><div class="tools">${Object.entries(EXPERIENCE).map(([k,v])=>opt("exp",k,v.name)).join("")}</div>
+    <div class="sub">Anything to work around? (optional)</div><div class="tools">${Object.entries(LIMITS).map(([k,v])=>`<button type="button" class="tbtn" data-act="rflim" data-k="${k}" aria-pressed="${f.limits.includes(k)}">${esc(v)}</button>`).join("")}</div>
+    ${f.limits.length?`<div class="banner deload">If something hurts, stop and see a physiotherapist or doctor. This plan only avoids the exercises that most often aggravate it.</div>`:""}
+    <div class="finish"><button type="button" class="btn primary" data-act="rfgen">Preview plan</button></div>
+  </div>`;
+  const prev = f.preview ? `<div class="block-h"><h2 id="rf-preview">Preview</h2></div>${planPreview(f.preview)}<div class="finish"><button type="button" class="btn primary" data-act="rfuse">Use this plan</button><button type="button" class="btn ghost" data-act="rfdiscard">Discard</button></div>` : "";
+  const ev = `<div class="block-h"><h2>Why these rules</h2></div><div class="card prose"><div class="sub">${esc(EVIDENCE_NOTE)}</div>${EVIDENCE.map(e=>`<div><b>${esc(e.rule)}.</b> ${esc(e.use)}<div class="sub">${esc(e.text)}</div>${e.links.length?`<div class="sub">${e.links.map(([t,u])=>`<a href="${u}" target="_blank" rel="noopener">${esc(t)}</a>`).join(" · ")}</div>`:""}<div class="sub"><i>${esc(e.confidence)}</i></div></div>`).join("")}</div>`;
+  return `<div class="block">${active}${types}${form}${prev}${ev}</div>`;
+}
+function setRest(len){
+  const near = REST_LENGTHS.reduce((a,b)=>Math.abs(b-len)<Math.abs(a-len)?b:a);
+  rest.len = near; LS.set("gravity-log:rest", near); showRestLen();
+  if(document.getElementById("treset").hidden) document.getElementById("tclock").textContent = clockText(near);
+}
+function useRoutine(id){
+  if(draft && Object.values(draft.entries).some(e=>e.done.some(Boolean))){ toast("Finish or clear the current session before switching routines."); return false }
+  S.routine = id; draft = null; LS.set(KEY.draft,null); day = null;
+  const r = R(); if(r.rest) setRest(r.rest);
+  try{ saveLocal() }catch(e){ toast("Could not save the routine on this phone."); return false }
+  tab = "train"; render(); window.scrollTo(0,0); toast(`<b>${esc(r.name)} is active.</b> Your sessions are on the Train tab.`);
+  return true;
 }
 
 /* ---------- Actions ---------- */
@@ -1117,17 +1393,16 @@ async function finish(){
     const L=lv(ex,e.level);
     if(!deload && e.done.every(Boolean) && e.sets.every(v=>Number(v)>=L.max) && e.level<EX[ex].levels.length-1){ ups.push(ex) }
   });
-  const s={id:"s"+Date.now(), date:draft.date, ts:Date.now(), day:draft.day, warmup:draft.warm.filter(Boolean).length, entries, levelUps:ups};
+  const s={id:"s"+Date.now(), date:draft.date, ts:Date.now(), routine:S.routine, day:draft.day, warmup:draft.warm.filter(Boolean).length, entries, levelUps:ups};
   try{
     await saveSession(s);
     if(ups.length){ ups.forEach(ex=>S.levels[ex]=S.levels[ex]+1); await saveLevels() }
   }catch(e){ toast("Could not save the session on this phone. Free some space or save a backup, then press Finish again."); return }
-  draft=null; LS.set(KEY.draft,null); day=nextDayAfter(s.day);
+  draft=null; LS.set(KEY.draft,null); day=null;
   toast(ups.length ? `<b>Session saved.</b> Level-up: ${ups.map(ex=>esc(EX[ex].name)+" → "+esc(lv(ex,S.levels[ex]).name)).join("; ")}.` : "<b>Session saved.</b> Same levels next time; aim for one more rep or a few more seconds.");
   render();
   if(backupDue()) await autoBackup();
 }
-const nextDayAfter = d => d==="A" ? "B" : "A";
 
 document.addEventListener("click", async ev=>{
   const b = ev.target.closest("[data-act],[data-tab]"); if(!b) return;
@@ -1151,12 +1426,12 @@ document.addEventListener("click", async ev=>{
   else if(a==="pick"){
     const e=draft.entries[ex];
     if(e.done.some(Boolean)){ toast("Untick the sets you have done before swapping this exercise."); return }
-    e.sub=b.dataset.id; e.sets=altLastValues(e.sub); e.done=Array(SETS).fill(false); ui.swap.delete(ex); saveDraft(); refreshCard(ex);
+    const n=e.sets.length; e.sub=b.dataset.id; e.sets=altLastValues(e.sub,n); e.done=Array(n).fill(false); ui.swap.delete(ex); saveDraft(); refreshCard(ex);
   }
   else if(a==="unsub"){
     const e=draft.entries[ex];
     if(e.done.some(Boolean)){ toast("Untick the sets you have done before switching back."); return }
-    delete e.sub; e.sets=lastValues(ex,e.level); e.done=Array(SETS).fill(false); ui.swap.delete(ex); saveDraft(); refreshCard(ex);
+    const n=e.sets.length; delete e.sub; e.sets=lastValues(ex,e.level,n); e.done=Array(n).fill(false); ui.swap.delete(ex); saveDraft(); refreshCard(ex);
   }
   else if(a==="video"){ ui.video.add(b.dataset.key); if(tab==="train") refreshCard(ex || b.closest(".card").dataset.card); else render() }
   else if(a==="warm"){ draft.warm[i]=!draft.warm[i]; saveDraft(); b.setAttribute("aria-pressed", draft.warm[i]) }
@@ -1168,6 +1443,12 @@ document.addEventListener("click", async ev=>{
   else if(a==="edcancel"){ ui.edit = null; render() }
   else if(a==="edsave"){ saveEdit() }
   else if(a==="edrm"){ delete ui.edit.entries[b.dataset.k]; render() }
+  else if(a==="rf"){ ui.rf[b.dataset.k] = b.dataset.k==="days" ? +b.dataset.v : b.dataset.v; ui.rf.preview = null; render() }
+  else if(a==="rflim"){ const L = ui.rf.limits, k = b.dataset.k; L.includes(k) ? L.splice(L.indexOf(k),1) : L.push(k); ui.rf.preview = null; render() }
+  else if(a==="rfgen"){ ui.rf.preview = buildHomePlan(ui.rf); render(); const pv = document.getElementById("rf-preview"); if(pv) pv.scrollIntoView({behavior:"smooth"}) }
+  else if(a==="rfdiscard"){ ui.rf.preview = null; render() }
+  else if(a==="rfuse"){ if(ui.rf.preview){ const prev = S.plans.home; S.plans.home = ui.rf.preview; if(useRoutine("home")) ui.rf.preview = null; else { if(prev) S.plans.home = prev; else delete S.plans.home } } }
+  else if(a==="useroutine"){ useRoutine(b.dataset.id) }
   else if(a==="askdel"){ document.getElementById("del-"+b.dataset.id).innerHTML=`<button type="button" class="btn danger" data-act="del" data-id="${b.dataset.id}">Confirm delete</button> <button type="button" class="btn ghost" data-act="nodel">Keep</button>` }
   else if(a==="nodel"){ render() }
   else if(a==="export"){ await exportBackup() }

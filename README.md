@@ -58,6 +58,16 @@ done.groupby(["exercise", "date"]).value.max().unstack(0).plot()
 
 The JSON backup has the same data plus your current levels: `{"levels": {...}, "sessions": [{"date", "day", "entries": {exercise: {"level", "sets", "done"}}, "levelUps"}]}`.
 
+## Routines
+
+The Routine tab holds the active routine. **Calisthenics** is the built-in one. **Home training** is generated from your inputs: days per week (2 to 6), session length (short about 30 minutes, mid about 45, long 60 to 75), goal (general fitness, muscle, strength), experience, and anything to work around (wrist, shoulder, knee or lower-back pain). Bodyweight only, with a floor, a wall, and a chair or table.
+
+- The plan sets weekly hard sets per muscle from the goal and experience (`TARGETS`), fits them to the time you chose, spreads each muscle over the days that train it about twice a week where possible (`SPLITS`), and shows a weekly table with direct sets, indirect sets and the target. Longer sessions add volume up to 1.5 times the target.
+- Exercises come from the same ladders as the calisthenics routine plus calf raise, plank and underhand row. Chair dips, fist push-ups and chair squats are used as preselected alternatives.
+- Each rule has its sources and a confidence note in the Routine tab (`EVIDENCE` in `docs/index.html`). The figures come from articles that summarise Israetel, Nippard and Ethier and from the studies they cite; they are general guidelines, not medical advice.
+- Switching routines keeps each routine's own history. The saved plan and the active routine are part of the backup file.
+- Gym and cardio routines are planned.
+
 ## Editing history
 
 In Progress > History, **Edit** opens a finished session: change the date, the day, each set's number and done tick, the level or alternative recorded, or remove an exercise. Saving never changes your current levels or level-up history.
