@@ -1,7 +1,7 @@
 // Offline support: the app shell is cached on install. Pages load from the network
 // first (so new versions arrive) and fall back to the cache when offline.
 // Your training log is in localStorage, not in this cache, so updates never touch it.
-const CACHE = "gravity-log-v3";
+const CACHE = "gravity-log-v4";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
