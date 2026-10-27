@@ -66,7 +66,11 @@ The Routine tab holds the active routine. **Calisthenics** is the built-in one. 
 - Exercises come from the same ladders as the calisthenics routine plus calf raise, plank and underhand row. Chair dips, fist push-ups and chair squats are used as preselected alternatives.
 - Each rule has its sources and a confidence note in the Routine tab (`EVIDENCE` in `docs/index.html`). The figures come from articles that summarise Israetel, Nippard and Ethier and from the studies they cite; they are general guidelines, not medical advice.
 - Switching routines keeps each routine's own history. The saved plan and the active routine are part of the backup file.
-- Gym and cardio routines are planned.
+- **Gym training** is generated the same way, from days, session length, goal, experience and the equipment you can use (barbell, dumbbells, cables, machines). It covers the key patterns (squat, hinge, horizontal and vertical push, horizontal and vertical pull, single-leg) plus accessories (chest fly, triceps, biceps, side and rear delts, hamstring curl, leg extension, calves, core), with 3 to 5 movements for each pattern (`GYM` in `docs/index.html`). Muscle gain gets the full accessories; general fitness and strength get fewer.
+  - You log the weight and reps of every set. Double progression suggests the next weight: when every set reaches the top of the range it adds 2.5 kg (2 kg for dumbbells) and starts at the bottom again.
+  - Blocks are 5 weeks of training with one extra set on the main lifts from week 3, then a lighter week (2 sets at about 85% of the weight). The movement for each pattern rotates every block, and the Swap movement button changes it any time (it stays until you tap Back to auto-rotation).
+  - Photos are from free-exercise-db; weights are in kg.
+- Cardio routines are planned.
 
 ## Editing history
 

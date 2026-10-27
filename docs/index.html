@@ -140,6 +140,15 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .ed-sets{display:flex;gap:10px;flex-wrap:wrap}
 .ed-set{display:flex;flex-direction:column;gap:4px;font-size:.8rem}
 .ed-set input[type=number]{width:64px;font:500 1rem var(--mono);padding:6px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+.set.gym{grid-template-columns:auto 1fr auto}
+.gym-steps{display:flex;align-items:center;gap:2px 4px;flex-wrap:wrap}
+.set.gym{gap:6px}
+.set.gym .n{width:auto;font-size:.7rem}
+.set.gym .step button{width:26px}
+.set.gym .step input{width:38px;font-size:.95rem}
+.set.gym .unit{margin-left:1px;margin-right:2px;min-width:0;font-size:.68rem;white-space:nowrap}
+.ed-set label{display:flex;align-items:center;gap:4px}
+.ed-set input[type=number]{width:70px}
 .hold{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;height:38px;min-width:42px;padding:0 8px;margin-left:6px;font:500 .85rem var(--mono);cursor:pointer}
 .hold.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .timer b{font:500 1rem var(--mono);min-width:3.2em;text-align:center}
@@ -688,17 +697,22 @@ async function deleteSession(id){ S.sessions = S.sessions.filter(s=>s.id!==id); 
 /* Backups: a full JSON file to restore, and a CSV (one row per set) to analyse on a PC. */
 function backupObject(){ return {app:"gravity-log", format:2, exported:new Date().toISOString(), levels:S.levels, sessions:S.sessions, routine:S.routine, plans:S.plans} }
 function csvText(){
-  const rows=[["date","day","exercise","pattern","level","level_name","set","value","unit","done","substitute_for","routine"]];
+  const rows=[["date","day","exercise","pattern","level","level_name","set","value","unit","done","substitute_for","routine","load_kg"]];
   S.sessions.forEach(s=>Object.entries(s.entries||{}).forEach(([key,e])=>{
+    if(isGymKey(key)){
+      const M = GYM.moves[key.slice(2)]; if(!M) return;
+      e.sets.forEach((v,i)=>rows.push([s.date,s.day,M.name,(GYM.slots[e.slot]||{}).pattern||"","",M.name,i+1,v,M.unit==="s"?"s":"reps",e.done[i]?1:0,"",s.routine||"calisthenics",e.loads?e.loads[i]:""]));
+      return;
+    }
     const alt = altOf(key);
     if(alt){
       if(!ALT[alt] || !EX[e.subFor]) return;
-      e.sets.forEach((v,i)=>rows.push([s.date,s.day,ALT[alt][0],EX[e.subFor].pattern,"",ALT[alt][0],i+1,v,ALT[alt][4],e.done[i]?1:0,EX[e.subFor].name,s.routine||"calisthenics"]));
+      e.sets.forEach((v,i)=>rows.push([s.date,s.day,ALT[alt][0],EX[e.subFor].pattern,"",ALT[alt][0],i+1,v,ALT[alt][4],e.done[i]?1:0,EX[e.subFor].name,s.routine||"calisthenics",""]));
       return;
     }
     const ex = key;
     if(!EX[ex]) return;
-    e.sets.forEach((v,i)=>rows.push([s.date,s.day,EX[ex].name,EX[ex].pattern,e.level+1,EX[ex].levels[e.level][0],i+1,v,EX[ex].unit,e.done[i]?1:0,"",s.routine||"calisthenics"]));
+    e.sets.forEach((v,i)=>rows.push([s.date,s.day,EX[ex].name,EX[ex].pattern,e.level+1,EX[ex].levels[e.level][0],i+1,v,EX[ex].unit,e.done[i]?1:0,"",s.routine||"calisthenics",""]));
   }));
   return rows.map(r=>r.map(c=>{const t=String(c);return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t}).join(",")).join("\n");
 }
@@ -789,7 +803,7 @@ function nextDay(){
 // A session's day label, using the routine it was logged with.
 const dayLabelOf = s => { const d = routineById(s.routine||"calisthenics").days.find(x=>x.id===s.day); return d ? d.label : "Day "+s.day };
 // Every exercise of a routine, once, in order.
-const routineExercises = r => [...new Set(r.days.flatMap(d=>itemsOf(d).map(it=>it.ex)))];
+const routineExercises = r => [...new Set(r.days.flatMap(d=>itemsOf(d).filter(it=>it.ex).map(it=>it.ex)))];
 function weekNo(){
   if(!S.sessions.length) return 1;
   const first = new Date(S.sessions[0].date+"T12:00:00"), now = new Date();
@@ -826,6 +840,7 @@ function status(ex){
 function newDraft(d){
   const entries = {}, r = R();
   itemsOf(dayOf(d)).forEach(it=>{
+    if(it.gym){ entries[itemKey(it)] = gymEntryFor(it.slot, gymSets(it, r), it.reps); return }
     const l=S.levels[it.ex], n=it.sets||SETS;
     entries[it.ex] = it.sub ? {level:l, sub:it.sub, sets:altLastValues(it.sub,n), done:Array(n).fill(false)} : {level:l, sets:lastValues(it.ex,l,n), done:Array(n).fill(false)};
   });
@@ -868,7 +883,7 @@ function refreshFooter(){
 }
 function refreshProgress(ex){
   const e = draft.entries[ex], c = cardEl(ex);
-  if(c) c.querySelector(".target").innerHTML = targetHTML(spec(ex,e), e);
+  if(c && !e.gym) c.querySelector(".target").innerHTML = targetHTML(spec(ex,e), e);
   refreshFooter();
 }
 function refreshCard(ex){
@@ -891,7 +906,7 @@ function swapPanel(ex, e, sp){
   </div>`;
 }
 // The animated figure or photo of a card, on its own so Pause can swap just this part.
-function figHTML(ex, e, sp){ return visualHTML(sp.poses, musclesFor(ex,e), ui.frozen.get(ex), ex, photoOf(ex,e)) }
+function figHTML(ex, e, sp){ if(e.gym) return visualHTML(null, null, ui.frozen.get(ex), ex, GYM.moves[e.move].photo); return visualHTML(sp.poses, musclesFor(ex,e), ui.frozen.get(ex), ex, photoOf(ex,e)) }
 function showPanel(ex, e, sp){
   const key = e.sub ? "alt:"+e.sub : ex+":"+e.level;
   const id = e.sub ? null : videoOf(ex,e.level);
@@ -913,6 +928,7 @@ function targetHTML(sp, e){
 }
 const holdRunning = (ex,i) => HOLD && HOLD.ex===ex && HOLD.i===i;
 function exCard(ex){
+  if(isGymKey(ex)) return gymCard(ex);
   const e = draft.entries[ex], sp = spec(ex,e), step = sp.unit==="s" ? 5 : 1, unit = sp.unit==="s" ? "s" : "reps";
   const sets = e.sets.map((val,i)=>`
     <div class="set">
@@ -946,18 +962,76 @@ function exCard(ex){
   </div>`;
 }
 
+function gymCard(key){
+  const e = draft.entries[key], M = GYM.moves[e.move], unit = M.unit==="s" ? "s" : "reps", step = M.unit==="s" ? 5 : 1, load = M.eq==="body" ? "+ kg" : "kg";
+  const sets = e.sets.map((v,i)=>`
+    <div class="set gym">
+      <span class="n">Set ${i+1}</span>
+      <div class="gym-steps">
+        <div class="step">
+          <button type="button" data-act="ldec" data-ex="${key}" data-i="${i}" data-step="${M.inc}" aria-label="Less weight">−</button>
+          <input id="l-${key}-${i}" type="number" inputmode="decimal" step="${M.inc}" min="0" value="${e.loads[i]}" data-act="lval" data-ex="${key}" data-i="${i}" aria-label="${esc(M.name)} set ${i+1} weight in kilograms">
+          <button type="button" data-act="linc" data-ex="${key}" data-i="${i}" data-step="${M.inc}" aria-label="More weight">+</button>
+        </div><span class="unit">${load}</span>
+        <div class="step">
+          <button type="button" data-act="dec" data-ex="${key}" data-i="${i}" data-step="${step}" aria-label="Fewer">−</button>
+          <input id="v-${key}-${i}" type="number" inputmode="numeric" min="0" value="${v}" data-act="val" data-ex="${key}" data-i="${i}" aria-label="${esc(M.name)} set ${i+1} ${unit}">
+          <button type="button" data-act="inc" data-ex="${key}" data-i="${i}" data-step="${step}" aria-label="More">+</button>
+        </div><span class="unit">${unit}</span>
+      </div>
+      <button type="button" class="tick" data-act="done" data-ex="${key}" data-i="${i}" aria-pressed="${e.done[i]}" aria-label="Mark set ${i+1} done">✓</button>
+    </div>`).join("");
+  const shown = ui.show.has(key), open = ui.swap.has(key);
+  return `<div class="card" data-card="${key}">
+    <div class="ex-top"><div><div class="pattern">${esc(GYM.slots[e.slot].pattern)}</div><h3>${esc(M.name)}</h3></div><span class="pill new">${esc(EQNAME[M.eq])}</span></div>
+    <div class="cue">${esc(M.cue)}</div>
+    <div class="needs">${esc(e.hint)}</div>
+    <div class="target">Target ${e.sets.length} × ${e.range[0]}–${e.range[1]} ${unit}</div>
+    <div class="sets">${sets}</div>
+    <div class="tools">
+      <button type="button" class="tbtn" data-act="show" data-ex="${key}" aria-expanded="${shown}">Show me</button>
+      <button type="button" class="tbtn" data-act="swap" data-ex="${key}" aria-expanded="${open}">Swap movement</button>
+    </div>
+    ${shown?gymShowPanel(key,e):""}${open?gymSwapPanel(key,e):""}
+  </div>`;
+}
+function gymShowPanel(key, e){
+  const M = GYM.moves[e.move];
+  return `<div class="panel">
+    ${visualHTML(null, null, ui.frozen.get(key), key, M.photo)}
+    <div class="tools">${reducedMotion()?"":`<button type="button" class="tbtn" data-act="pause" data-ex="${key}">${ui.frozen.has(key)?"▶ Play":"⏸ Pause"}</button>`}</div>
+    <div class="sub">Start and end of the movement. Photos: free-exercise-db, public domain. Works: ${esc(M.muscles)}.</div>
+    <div class="sub"><a href="${ytSearch(M.name+" form")}" target="_blank" rel="noopener">Search YouTube for ${esc(M.name)}</a></div>
+  </div>`;
+}
+function gymSwapPanel(key, e){
+  const plan = R(), opts = moveOptions(plan, e.slot);
+  return `<div class="panel">
+    <div class="sub">Other ${esc(GYM.slots[e.slot].name.toLowerCase())} movements you can use. Your choice stays until you change it.</div>
+    ${opts.map(id=>{ const M = GYM.moves[id]; return `<div class="alt-opt"><div><b>${esc(M.name)}</b><div class="last">${esc(EQNAME[M.eq])} · ${esc(M.muscles)}</div></div>
+      <button type="button" class="btn ghost" data-act="gpick" data-ex="${key}" data-id="${id}" ${id===e.move?"disabled":""}>${id===e.move?"In use":"Use"}</button><div class="cue">${esc(M.cue)}</div></div>` }).join("")}
+    ${plan.picks && plan.picks[e.slot] ? `<button type="button" class="btn ghost" data-act="gauto" data-ex="${key}">Back to auto-rotation</button>` : ""}
+    <div class="sub">With auto-rotation the movement changes every ${plan.cycle} weeks: ${plan.cycle-1} weeks of training, then a lighter week.</div>
+  </div>`;
+}
+function gymBanner(r){
+  const i = gymInfo(r);
+  return i.deload
+    ? `<div class="banner deload"><b>Lighter week (week ${i.week} of ${i.len}).</b> Do 2 sets per exercise at about 85% of your usual weight and stop well short of failure. Next week the movements rotate.</div>`
+    : `<div class="banner info"><b>Block ${i.block+1}, week ${i.week} of ${i.len}.</b> ${i.ramp ? "One extra set on each main lift this week." : "Base volume."} Lighter week at week ${i.len}.</div>`;
+}
 function viewTrain(){
   ensureDraft();
   const r = R(), D = dayOf(day), doneSets = Object.values(draft.entries).reduce((a,e)=>a+e.done.filter(Boolean).length,0);
   const totalSets = Object.values(draft.entries).reduce((a,e)=>a+e.sets.length,0);
-  const deload = isDeload() ? `<div class="banner deload"><b>Deload week (week ${weekNo()}).</b> Do 2 sets per exercise and stop 1–2 reps short of your best. Levels don't change this week.</div>` : "";
+  const deload = r.kind==="gym" ? gymBanner(r) : isDeload() ? `<div class="banner deload"><b>Deload week (week ${weekNo()}).</b> Do 2 sets per exercise and stop 1–2 reps short of your best. Levels don't change this week.</div>` : "";
   const first = !S.sessions.length && r.id==="calisthenics" ? `<div class="banner info">Starting levels are set from your current numbers: 3–4 pull-ups, 8–10 push-ups, 3–4 dips, plank 30–40 s. Adjust any of them in Program if the first session feels too easy or too hard.</div>` : "";
   const lb = lastBackupDays();
   const remind = S.sessions.length>=3 && (lb===null || lb>=14) ? `<div class="banner backup"><b>No backup for ${lb===null?"this log yet":lb+" days"}.</b> Save one in Progress, under Your data.</div>` : "";
   const effort = r.effort ? `<div class="banner info"><b>${esc(r.name)}.</b> ${esc(r.effort)}</div>` : "";
   const warm = warmupOf(r);
   let n = 1;
-  const blocks = D.blocks.map(bk=>`<div class="block-h"><h3>${++n} · ${esc(bk.title)}</h3><span class="min">${bk.pair?`alternate, <span class="restn">${rest.len}</span> s rest · `:""}~${bk.min} min</span></div>${bk.pair ? `<div class="pair">${bk.items.map(it=>exCard(it.ex)).join("")}</div>` : bk.items.map(it=>exCard(it.ex)).join("")}`).join("");
+  const blocks = D.blocks.map(bk=>`<div class="block-h"><h3>${++n} · ${esc(bk.title)}</h3><span class="min">${bk.pair?`alternate, <span class="restn">${rest.len}</span> s rest · `:""}~${bk.min} min</span></div>${bk.pair ? `<div class="pair">${bk.items.map(it=>exCard(itemKey(it))).join("")}</div>` : bk.items.map(it=>exCard(itemKey(it))).join("")}`).join("");
   return `<div class="block">
     ${first}${deload}${remind}${effort}
     <div class="daybar">
@@ -1020,6 +1094,11 @@ const editDays = () => { const s = ui.edit && S.sessions.find(x=>x.id===ui.edit.
 function sessionEditHTML(){
   const d = ui.edit;
   const rows = Object.entries(d.entries).map(([k,e])=>{
+    if(isGymKey(k)){
+      const M = GYM.moves[k.slice(2)] || {name:k, unit:"reps"}, u = M.unit==="s" ? "seconds" : "reps";
+      const sets = e.sets.map((v,i)=>`<span class="ed-set"><label>kg <input type="number" inputmode="decimal" step="0.5" min="0" value="${(e.loads||[])[i]||0}" data-ed="lval" data-k="${esc(k)}" data-i="${i}" aria-label="${esc(M.name)} set ${i+1} weight in kilograms"></label><label>${u} <input type="number" inputmode="numeric" min="0" value="${v}" data-ed="val" data-k="${esc(k)}" data-i="${i}" aria-label="${esc(M.name)} set ${i+1} ${u}"></label><label><input type="checkbox" data-ed="done" data-k="${esc(k)}" data-i="${i}" ${e.done[i]?"checked":""}> done</label></span>`).join("");
+      return `<div class="ed-ex"><div class="ed-h"><b>${esc(M.name)}</b><button type="button" class="btn ghost" data-act="edrm" data-k="${esc(k)}">Remove</button></div><div class="ed-sets">${sets}</div></div>`;
+    }
     const alt = altOf(k), name = alt ? (ALT[alt] ? ALT[alt][0] : alt) : (EX[k] ? EX[k].name : k), unit = alt ? (ALT[alt]?ALT[alt][4]:"reps") : (EX[k]?EX[k].unit:"reps");
     const which = alt
       ? `<select data-ed="alt" data-k="${esc(k)}" aria-label="Alternative used">${altChoices(e.subFor).map(id=>`<option value="${id}" ${id===alt?"selected":""}>${esc(ALT[id][0])}</option>`).join("")}</select>`
@@ -1041,6 +1120,7 @@ function editChange(t){
   else if(t.dataset.ed==="day") d.day = t.value;
   else if(t.dataset.ed==="val") e.sets[+t.dataset.i] = Math.max(0, Number(t.value)||0);
   else if(t.dataset.ed==="done") e.done[+t.dataset.i] = t.checked;
+  else if(t.dataset.ed==="lval"){ e.loads = e.loads || e.sets.map(()=>0); e.loads[+t.dataset.i] = Math.max(0, Number(t.value)||0) }
   else if(t.dataset.ed==="level") e.level = +t.value;
   else if(t.dataset.ed==="alt"){
     // The entry is stored under alt:<id>, so the key changes with the alternative; keep its place in the list.
@@ -1060,6 +1140,19 @@ function saveEdit(){
   S.sessions.sort((a,b)=>a.ts-b.ts);
   try{ saveLocal() }catch(e){ toast("Could not save the changes on this phone."); return }
   ui.edit = null; toast("<b>Session updated.</b> Levels were not changed."); render();
+}
+function gymProgressCards(){
+  const used = {};
+  S.sessions.forEach(s=>Object.entries(s.entries||{}).forEach(([k,e])=>{ if(isGymKey(k) && GYM.moves[k.slice(2)]) (used[k.slice(2)] = used[k.slice(2)] || []).push({date:s.date, ...e}) }));
+  return Object.entries(used).sort((a,b)=>b[1][b[1].length-1].date.localeCompare(a[1][a[1].length-1].date)).map(([id,es])=>{
+    const M = GYM.moves[id], last = es[es.length-1], pts = es.slice(-20).map(e1rm), u = M.unit==="s" ? "s" : "reps";
+    const top = Math.max(...es.map(e1rm));
+    return `<div class="card">
+      <div class="ex-top"><div><div class="pattern">${esc((GYM.slots[last.slot]||{}).pattern||"Gym")}</div><h3>${esc(M.name)}</h3></div><span class="pill new">${esc(EQNAME[M.eq])}</span></div>
+      ${spark(null, es, pts, M.name)}
+      <div class="last">Last ${fmtDate(last.date)}: ${last.sets.map((v,i)=>last.done[i]?`${last.loads[i]} kg × ${v}`:"–").join(" / ")}${M.unit==="s"?"":` · best estimated max ${Math.round(top*10)/10} kg`}</div>
+    </div>`;
+  }).join("");
 }
 function swapCards(){
   const ids = Object.keys(ALT).filter(id=>altEntries(id).length);
@@ -1109,7 +1202,7 @@ function viewProgress(){
     </div>
     <div class="card"><div class="block-h"><h3>Last 12 weeks</h3><span class="sub"><span style="color:var(--accent)">■</span> Day A &nbsp;<span style="color:var(--chalk)">■</span> Day B</span></div><div class="cal">${calendar()}</div></div>
     <div class="block-h"><h2>Movements</h2><span class="sub">Line = level + share of the top of range reached</span></div>
-    <div class="grid2">${cards}</div>
+    <div class="grid2">${cards}${gymProgressCards()}</div>
     ${swapCards()}
     <div class="card">
       <div class="block-h"><h3>Your data</h3><span class="sub">${S.persistent===true?"Storage protected":S.persistent===false?"Browser may clear storage":""}</span></div>
@@ -1145,6 +1238,29 @@ function programProse(){
       </ul>
     </div>`;
 }
+ui.progG = new Set();
+function gymProse(){
+  const r = R(), i = r.inputs || {};
+  return `<div class="card prose">
+      <h2>${esc(r.name)}</h2>
+      <ul>
+        <li><b>Plan.</b> ${r.days.length} days a week, ${esc(LENGTHS[i.len]?LENGTHS[i.len].label:"")}, goal: ${esc(GOALS[i.goal]?GOALS[i.goal].name:"")}. Built in the Routine tab, with the sources for every rule.</li>
+        <li><b>Movements.</b> Each pattern (squat, hinge, pushes, pulls, single-leg, accessories) has several movements. One is used at a time and the app rotates them every ${r.cycle} weeks; swap any time on the Train tab.</li>
+        <li><b>Weights.</b> Log the weight and reps of every set. When every set reaches the top of the rep range, the app suggests the next weight.</li>
+        <li><b>Blocks.</b> ${r.cycle-1} weeks of training with one extra set on the main lifts from week 3, then a lighter week of 2 sets at about 85% of your weight.</li>
+        <li><b>Effort.</b> ${esc(r.effort||"")}</li>
+      </ul>
+    </div>`;
+}
+function gymCatalogHTML(){
+  const r = R(), slots = SLOT_ORDER.filter(s=>moveOptions(r,s).length && r.days.some(d=>itemsOf(d).some(it=>it.slot===s)));
+  const cards = slots.map(s=>{
+    const cur = moveFor(r, s);
+    return `<div class="card"><div class="ex-top"><div><div class="pattern">${esc(GYM.slots[s].pattern)}</div><h3>${esc(GYM.slots[s].name)}</h3></div></div>
+      <ul class="lv-list">${moveOptions(r,s).map(id=>{ const M = GYM.moves[id]; return `<li class="${id===cur?"cur":""}"><span class="k"></span><span>${esc(M.name)} <span class="r">${esc(EQNAME[M.eq])}</span></span><span class="lv-btns">${id===cur?'<span class="pill new">In use</span>':""}<button type="button" data-act="gshow" data-id="${id}" aria-expanded="${ui.progG.has(id)}">Show</button></span>${ui.progG.has(id)?`<div class="lv-panel"><div class="panel">${visualHTML(null,null,undefined,id,M.photo)}<div class="sub">${esc(M.cue)}</div><div class="sub">Works: ${esc(M.muscles)}. Photos: free-exercise-db, public domain.</div></div></div>`:""}</li>` }).join("")}</ul></div>`;
+  }).join("");
+  return `<div class="block-h"><h2>Movements</h2><span class="sub">Rotation picks the next one every ${r.cycle} weeks</span></div><div class="grid2">${cards}</div>`;
+}
 function homeProse(){
   const r = R(), i = r.inputs || {};
   return `<div class="card prose">
@@ -1164,12 +1280,61 @@ function viewProgram(){
     <ul class="lv-list">${EX[ex].levels.map((L,i)=>`<li class="${i===S.levels[ex]?"cur":""}"><span class="k">${i+1}</span><span>${esc(L[0])} <span class="r">${L[2]}–${L[3]}</span></span><span class="lv-btns">${i===S.levels[ex]?'<span class="pill new">Current</span>':`<button type="button" data-act="setlvl" data-ex="${ex}" data-i="${i}">Set</button>`}<button type="button" data-act="plevel" data-ex="${ex}" data-i="${i}" aria-expanded="${ui.prog.get(ex)===i}">Show</button></span>${ui.prog.get(ex)===i?`<div class="lv-panel">${progPanel(ex,i)}</div>`:""}</li>`).join("")}</ul>
   </div>`).join("");
   return `<div class="block">
-    ${R().builtin ? programProse() : homeProse()}
-    <div class="block-h"><h2>Ladders</h2><span class="sub">Ranges are per set</span></div>
-    <div class="grid2">${ladders}</div>
+    ${R().builtin ? programProse() : R().kind==="gym" ? gymProse() : homeProse()}
+    ${R().kind==="gym" ? gymCatalogHTML() : `<div class="block-h"><h2>Ladders</h2><span class="sub">Ranges are per set</span></div>
+    <div class="grid2">${ladders}</div>`}
   </div>`;
 }
 
+
+/* ---------- Gym: movements by pattern ---------- */
+// Each pattern (slot) has several movements; a routine uses one per pattern and rotates them every block. Photos: free-exercise-db.
+const GYM = {"slots":{"squat":{"name":"Squat","pattern":"Legs · squat","kind":"compound","main":"quads","also":{"hamglute":0.5},"moves":["back_squat","front_squat","goblet_squat","leg_press","hack_squat"]},"hinge":{"name":"Hinge","pattern":"Legs · hinge","kind":"compound","main":"hamglute","also":{},"moves":["rdl","deadlift","db_rdl","hip_thrust","back_ext"]},"hpush":{"name":"Horizontal push","pattern":"Push · horizontal","kind":"compound","main":"chest","also":{"delts":0.5,"triceps":0.5},"moves":["bench","db_bench","incline_db","machine_chest","incline_bb"]},"vpush":{"name":"Vertical push","pattern":"Push · vertical","kind":"compound","main":"delts","also":{"triceps":0.5},"moves":["ohp","db_press","machine_press","arnold"]},"hpull":{"name":"Horizontal pull","pattern":"Pull · horizontal","kind":"compound","main":"back","also":{"biceps":0.5},"moves":["bb_row","db_row","cable_row","tbar_row"]},"vpull":{"name":"Vertical pull","pattern":"Pull · vertical","kind":"compound","main":"back","also":{"biceps":0.5},"moves":["pulldown","pullup","chinup","vbar_pulldown"]},"unilat":{"name":"Single-leg","pattern":"Legs · single leg","kind":"compound","main":"quads","also":{"hamglute":0.5},"moves":["bulgarian","walking_lunge","step_up","rear_lunge"]},"legcurl":{"name":"Leg curl","pattern":"Legs · hamstrings","kind":"iso","main":"hamglute","also":{},"moves":["lying_curl","seated_curl","standing_curl"]},"legext":{"name":"Leg extension","pattern":"Legs · quads","kind":"iso","main":"quads","also":{},"moves":["leg_ext","leg_ext_1"]},"fly":{"name":"Chest fly","pattern":"Push · chest isolation","kind":"iso","main":"chest","also":{},"moves":["pec_deck","cable_fly","db_fly"]},"triceps":{"name":"Triceps","pattern":"Arms · triceps","kind":"iso","main":"triceps","also":{},"moves":["pushdown","rope_pushdown","oh_ext","skull"]},"biceps":{"name":"Biceps","pattern":"Arms · biceps","kind":"iso","main":"biceps","also":{},"moves":["bb_curl","db_curl","incline_curl","hammer","cable_curl"]},"lateral":{"name":"Side delts","pattern":"Shoulders · side","kind":"iso","main":"delts","also":{},"moves":["db_lateral","cable_lateral","one_arm_lateral"]},"rear":{"name":"Rear delts","pattern":"Shoulders · rear","kind":"iso","main":"delts","also":{},"moves":["face_pull","reverse_fly","cable_rear"]},"calves":{"name":"Calves","pattern":"Legs · calves","kind":"iso","main":"calves","also":{},"moves":["standing_calf","seated_calf","calf_press"]},"core":{"name":"Core","pattern":"Core","kind":"iso","main":"core","also":{},"moves":["cable_crunch","hang_raise","ab_roller","plank"]}},"moves":{"back_squat":{"name":"Back squat","eq":"barbell","cue":"Bar on the upper back, chest up, sit between the hips to at least parallel, drive up.","photo":"Barbell_Full_Squat","muscles":"quads; also calves, glutes, hamstrings, lower back","inc":2.5},"front_squat":{"name":"Front squat","eq":"barbell","cue":"Bar on the front shoulders, elbows high, stay upright, squat to depth.","photo":"Front_Barbell_Squat","muscles":"quads; also calves, glutes, hamstrings","inc":2.5},"goblet_squat":{"name":"Goblet squat","eq":"dumbbell","cue":"Hold one dumbbell at the chest, elbows inside the knees, sit deep.","photo":"Goblet_Squat","muscles":"quads; also calves, glutes, hamstrings, shoulders","inc":2},"leg_press":{"name":"Leg press","eq":"machine","cue":"Feet shoulder-width, lower until the knees reach about 90° or deeper without the hips curling up.","photo":"Leg_Press","muscles":"quads; also calves, glutes, hamstrings","inc":2.5},"hack_squat":{"name":"Hack squat","eq":"machine","cue":"Back on the pad, feet forward, lower deep and press through the whole foot.","photo":"Hack_Squat","muscles":"quads; also calves, glutes, hamstrings","inc":2.5},"rdl":{"name":"Romanian deadlift","eq":"barbell","cue":"Soft knees, push the hips back, bar close to the legs, feel the hamstrings stretch, then stand tall.","photo":"Romanian_Deadlift","muscles":"hamstrings; also calves, glutes, lower back","inc":2.5},"deadlift":{"name":"Deadlift","eq":"barbell","cue":"Bar over mid-foot, brace, push the floor away, lock out with the glutes.","photo":"Barbell_Deadlift","muscles":"lower back; also calves, forearms, glutes, hamstrings, lats, mid back, quads, traps","inc":2.5},"db_rdl":{"name":"Dumbbell Romanian deadlift","eq":"dumbbell","cue":"Dumbbells close to the thighs, hips back, flat back, stop when the hamstrings are stretched.","photo":"Stiff-Legged_Dumbbell_Deadlift","muscles":"hamstrings; also glutes, lower back","inc":2},"hip_thrust":{"name":"Hip thrust","eq":"barbell","cue":"Upper back on a bench, bar over the hips, drive up until the body is straight and squeeze the glutes.","photo":"Barbell_Hip_Thrust","muscles":"glutes; also calves, hamstrings","inc":2.5},"back_ext":{"name":"Back extension","eq":"machine","cue":"Hips on the pad, hinge from the hips, rise until the body is straight; hold a plate to add load.","photo":"Hyperextensions_Back_Extensions","muscles":"lower back; also glutes, hamstrings","inc":2.5},"bench":{"name":"Bench press","eq":"barbell","cue":"Shoulder blades pinched, feet planted, lower to the lower chest, press up.","photo":"Barbell_Bench_Press_-_Medium_Grip","muscles":"chest; also shoulders, triceps","inc":2.5},"db_bench":{"name":"Dumbbell bench press","eq":"dumbbell","cue":"Dumbbells over the chest, lower with elbows about 45–60° from the body, press up.","photo":"Dumbbell_Bench_Press","muscles":"chest; also shoulders, triceps","inc":2},"incline_db":{"name":"Incline dumbbell press","eq":"dumbbell","cue":"Bench at about 30°, lower to the upper chest, press up.","photo":"Incline_Dumbbell_Press","muscles":"chest; also shoulders, triceps","inc":2},"machine_chest":{"name":"Machine chest press","eq":"machine","cue":"Seat so the handles are at mid-chest, press without shrugging.","photo":"Machine_Bench_Press","muscles":"chest; also shoulders, triceps","inc":2.5},"incline_bb":{"name":"Incline bench press","eq":"barbell","cue":"Bench at about 30°, lower to the upper chest, press up.","photo":"Barbell_Incline_Bench_Press_-_Medium_Grip","muscles":"chest; also shoulders, triceps","inc":2.5},"ohp":{"name":"Overhead press","eq":"barbell","cue":"Bar at the collarbone, squeeze the glutes, press straight up and move the head through.","photo":"Standing_Military_Press","muscles":"shoulders; also triceps","inc":2.5},"db_press":{"name":"Dumbbell shoulder press","eq":"dumbbell","cue":"Dumbbells at the shoulders, press up and slightly together, lower under control.","photo":"Dumbbell_Shoulder_Press","muscles":"shoulders; also triceps","inc":2},"machine_press":{"name":"Machine shoulder press","eq":"machine","cue":"Seat so the handles start at shoulder height, press up without arching.","photo":"Machine_Shoulder_Military_Press","muscles":"shoulders; also triceps","inc":2.5},"arnold":{"name":"Arnold press","eq":"dumbbell","cue":"Start with palms facing you, rotate as you press, reverse on the way down.","photo":"Arnold_Dumbbell_Press","muscles":"shoulders; also triceps","inc":2},"bb_row":{"name":"Barbell row","eq":"barbell","cue":"Hinged torso, flat back, pull the bar to the lower ribs, control the way down.","photo":"Bent_Over_Barbell_Row","muscles":"mid back; also biceps, lats, shoulders","inc":2.5},"db_row":{"name":"One-arm dumbbell row","eq":"dumbbell","cue":"Hand and knee on a bench, pull the elbow back toward the hip. Reps per arm.","photo":"One-Arm_Dumbbell_Row","muscles":"mid back; also biceps, lats, shoulders","inc":2},"cable_row":{"name":"Seated cable row","eq":"cable","cue":"Chest tall, pull the handle to the stomach, squeeze the shoulder blades, let them stretch forward.","photo":"Seated_Cable_Rows","muscles":"mid back; also biceps, lats, shoulders","inc":2.5},"tbar_row":{"name":"Chest-supported T-bar row","eq":"machine","cue":"Chest on the pad, pull the elbows back and up, pause, lower fully.","photo":"Lying_T-Bar_Row","muscles":"mid back; also biceps, lats","inc":2.5},"pulldown":{"name":"Lat pulldown","eq":"cable","cue":"Chest up, pull the bar to the upper chest, elbows down and in, let the arms stretch fully on the way up.","photo":"Wide-Grip_Lat_Pulldown","muscles":"lats; also biceps, mid back, shoulders","inc":2.5},"pullup":{"name":"Pull-up","eq":"body","cue":"Full hang to chin over the bar; add a belt or dumbbell between the feet when easy.","photo":"Pullups","muscles":"lats; also biceps, mid back","inc":2.5},"chinup":{"name":"Chin-up","eq":"body","cue":"Underhand grip, full hang to chin over the bar.","photo":"Chin-Up","muscles":"lats; also biceps, forearms, mid back","inc":2.5},"vbar_pulldown":{"name":"V-bar pulldown","eq":"cable","cue":"Neutral grip, pull the handle to the upper chest, elbows down.","photo":"V-Bar_Pulldown","muscles":"lats; also biceps, mid back, shoulders","inc":2.5},"bulgarian":{"name":"Bulgarian split squat","eq":"dumbbell","cue":"Rear foot on a bench, lower straight down, front knee tracks the toes. Reps per leg.","photo":"Split_Squat_with_Dumbbells","muscles":"quads; also glutes, hamstrings","inc":2},"walking_lunge":{"name":"Dumbbell lunge","eq":"dumbbell","cue":"Long step, lower the back knee toward the floor, push through the front heel. Reps per leg.","photo":"Dumbbell_Lunges","muscles":"quads; also calves, glutes, hamstrings","inc":2},"step_up":{"name":"Dumbbell step-up","eq":"dumbbell","cue":"Whole foot on a box about knee height, stand fully, lower slowly. Reps per leg.","photo":"Dumbbell_Step_Ups","muscles":"quads; also calves, glutes, hamstrings","inc":2},"rear_lunge":{"name":"Dumbbell reverse lunge","eq":"dumbbell","cue":"Step back, lower the back knee, drive up through the front foot. Reps per leg.","photo":"Dumbbell_Rear_Lunge","muscles":"quads; also calves, glutes, hamstrings","inc":2},"lying_curl":{"name":"Lying leg curl","eq":"machine","cue":"Hips down on the pad, curl the heels to the glutes, lower slowly.","photo":"Lying_Leg_Curls","muscles":"hamstrings","inc":2.5},"seated_curl":{"name":"Seated leg curl","eq":"machine","cue":"Thighs snug under the pad, curl fully, control the return.","photo":"Seated_Leg_Curl","muscles":"hamstrings","inc":2.5},"standing_curl":{"name":"Standing leg curl","eq":"machine","cue":"Hips square, curl one leg at a time. Reps per leg.","photo":"Standing_Leg_Curl","muscles":"hamstrings","inc":2.5},"leg_ext":{"name":"Leg extension","eq":"machine","cue":"Pad above the ankles, extend fully, pause, lower slowly.","photo":"Leg_Extensions","muscles":"quads","inc":2.5},"leg_ext_1":{"name":"Single-leg extension","eq":"machine","cue":"One leg at a time, full extension, slow lowering. Reps per leg.","photo":"Single-Leg_Leg_Extension","muscles":"quads","inc":2.5},"pec_deck":{"name":"Pec deck","eq":"machine","cue":"Elbows slightly bent, bring the arms together, stretch wide on the way back.","photo":"Butterfly","muscles":"chest","inc":2.5},"cable_fly":{"name":"Cable fly","eq":"cable","cue":"Slight elbow bend, hug an imaginary tree, stretch under control.","photo":"Flat_Bench_Cable_Flyes","muscles":"chest","inc":2.5},"db_fly":{"name":"Dumbbell fly","eq":"dumbbell","cue":"Soft elbows, open wide to a comfortable stretch, bring the weights together.","photo":"Dumbbell_Flyes","muscles":"chest","inc":2},"pushdown":{"name":"Triceps pushdown","eq":"cable","cue":"Elbows pinned to the sides, extend fully, control the return.","photo":"Triceps_Pushdown","muscles":"triceps","inc":2.5},"rope_pushdown":{"name":"Rope pushdown","eq":"cable","cue":"Elbows pinned, spread the rope at the bottom.","photo":"Triceps_Pushdown_-_Rope_Attachment","muscles":"triceps","inc":2.5},"oh_ext":{"name":"Overhead cable extension","eq":"cable","cue":"Elbows by the ears, extend overhead, stretch fully behind the head.","photo":"Cable_Rope_Overhead_Triceps_Extension","muscles":"triceps","inc":2.5},"skull":{"name":"Skull crusher","eq":"barbell","cue":"Lower the bar toward the forehead or just behind, elbows still, extend.","photo":"EZ-Bar_Skullcrusher","muscles":"triceps; also forearms","inc":2.5},"bb_curl":{"name":"Barbell curl","eq":"barbell","cue":"Elbows by the sides, curl up without swinging, lower slowly.","photo":"Barbell_Curl","muscles":"biceps; also forearms","inc":2.5},"db_curl":{"name":"Dumbbell curl","eq":"dumbbell","cue":"Alternate or together, rotate the palm up as you curl.","photo":"Dumbbell_Bicep_Curl","muscles":"biceps; also forearms","inc":2},"incline_curl":{"name":"Incline dumbbell curl","eq":"dumbbell","cue":"Bench at about 60°, arms hang behind the body for a long stretch.","photo":"Alternate_Incline_Dumbbell_Curl","muscles":"biceps; also forearms","inc":2},"hammer":{"name":"Hammer curl","eq":"dumbbell","cue":"Neutral grip, elbows by the sides, curl without swinging.","photo":"Alternate_Hammer_Curl","muscles":"biceps; also forearms","inc":2},"cable_curl":{"name":"Cable preacher curl","eq":"cable","cue":"Upper arms on the pad, curl through the full range.","photo":"Cable_Preacher_Curl","muscles":"biceps; also forearms","inc":2.5},"db_lateral":{"name":"Dumbbell lateral raise","eq":"dumbbell","cue":"Slight elbow bend, lift out to the sides to about shoulder height, lower slowly.","photo":"Side_Lateral_Raise","muscles":"shoulders","inc":2},"cable_lateral":{"name":"Cable lateral raise","eq":"cable","cue":"Constant tension from the cable, lift to shoulder height.","photo":"Cable_Seated_Lateral_Raise","muscles":"shoulders; also mid back, traps","inc":2.5},"one_arm_lateral":{"name":"One-arm lateral raise","eq":"dumbbell","cue":"Hold a support, lift out to the side, control the lowering. Reps per arm.","photo":"One-Arm_Side_Laterals","muscles":"shoulders","inc":2},"face_pull":{"name":"Face pull","eq":"cable","cue":"Rope to the face, elbows high, pull apart and squeeze the upper back.","photo":"Face_Pull","muscles":"shoulders; also mid back","inc":2.5},"reverse_fly":{"name":"Dumbbell reverse fly","eq":"dumbbell","cue":"Hinged forward, open the arms wide with soft elbows, squeeze the shoulder blades.","photo":"Reverse_Flyes","muscles":"shoulders","inc":2},"cable_rear":{"name":"Cable rear delt fly","eq":"cable","cue":"Cross the cables, pull them apart at shoulder height.","photo":"Cable_Rear_Delt_Fly","muscles":"shoulders","inc":2.5},"standing_calf":{"name":"Standing calf raise","eq":"machine","cue":"Full stretch at the bottom, pause at the top, no bouncing.","photo":"Standing_Calf_Raises","muscles":"calves","inc":2.5},"seated_calf":{"name":"Seated calf raise","eq":"machine","cue":"Knees bent, full stretch, pause at the top.","photo":"Seated_Calf_Raise","muscles":"calves","inc":2.5},"calf_press":{"name":"Calf press","eq":"machine","cue":"On the leg press, balls of the feet on the plate, full range, pause at the top.","photo":"Calf_Press","muscles":"calves","inc":2.5},"cable_crunch":{"name":"Cable crunch","eq":"cable","cue":"Kneel, round the spine down toward the hips, exhale at the bottom.","photo":"Cable_Crunch","muscles":"abs","inc":2.5},"hang_raise":{"name":"Hanging leg raise","eq":"body","cue":"Hang from a bar, raise the legs without swinging, lower slowly.","photo":"Hanging_Leg_Raise","muscles":"abs","inc":2.5},"ab_roller":{"name":"Ab wheel rollout","eq":"body","cue":"Ribs down, roll out as far as you can keep the back flat, pull back.","photo":"Ab_Roller","muscles":"abs; also shoulders","inc":2.5},"plank":{"name":"Plank","eq":"body","cue":"Forearms down, body straight, squeeze glutes and abs. Count seconds as reps.","photo":"Plank","muscles":"abs","inc":2.5}}};
+GYM.moves.plank.unit = "s";
+const EQNAME = {barbell:"Barbell", dumbbell:"Dumbbells", cable:"Cable", machine:"Machine", body:"Bodyweight"};
+const GYM_EQUIP = {barbell:"Barbell, rack and bench", dumbbell:"Dumbbells", cable:"Cable machines", machine:"Machines"};
+const roundTo = (x, step) => Math.round(Math.round(x/step)*step*100)/100;
+const isGymKey = k => typeof k==="string" && k.startsWith("g:");
+const itemKey = it => it.gym ? "g:"+it.slot : it.ex;
+// Where a gym routine is in its block: weeks of training, then a lighter week, then the movements rotate.
+function gymInfo(plan){
+  const wk = Math.max(0, Math.floor((new Date() - new Date(plan.started+"T12:00:00"))/(7*864e5))), len = plan.cycle || 6, w = wk % len;
+  return {block:Math.floor(wk/len), week:w+1, len, deload:w===len-1, ramp:(w>=2 && w<len-1) ? 1 : 0};
+}
+const moveOptions = (plan, slot) => GYM.slots[slot].moves.filter(id=>{ const eq = GYM.moves[id].eq; return eq==="body" || plan.equip.includes(eq) });
+function moveFor(plan, slot){
+  const o = moveOptions(plan, slot), pick = plan.picks && plan.picks[slot];
+  if(pick && o.includes(pick)) return pick;
+  return o[(((plan.base && plan.base[slot])||0) + gymInfo(plan).block) % o.length];
+}
+// The last session in which this movement was actually done.
+function lastGymEntry(mid){
+  for(let i=S.sessions.length-1;i>=0;i--){ const e = (S.sessions[i].entries||{})["g:"+mid]; if(e && e.done.some(Boolean)) return e }
+  return null;
+}
+const e1rm = e => Math.max(0, ...e.sets.map((r,i)=>e.done[i] ? (e.loads[i]||0)*(1+Number(r)/30) : 0));
+// Double progression: same weight until every set reaches the top of the range, then a small jump.
+function nextGym(mid, range, inc, n){
+  const last = lastGymEntry(mid);
+  if(!last) return {loads:Array(n).fill(0), reps:Array(n).fill(range[0]), hint:`First time: start light and add weight until the last reps of a set are hard, with 2–3 reps left. Aim for ${range[0]}–${range[1]} reps, then log the weight.`};
+  const ok = last.done.map((d,i)=>d?i:-1).filter(i=>i>=0), w = Math.max(...ok.map(i=>last.loads[i]||0)), txt = `${w} kg × ${ok.map(i=>last.sets[i]).join(", ")}`;
+  if(ok.every(i=>last.sets[i]>=range[1])){ const nw = roundTo(w+inc, inc); return {loads:Array(n).fill(nw), reps:Array(n).fill(range[0]), hint:`Last time ${txt}. You reached the top of the range: go up to ${nw} kg and start at ${range[0]} reps.`} }
+  const low = ok.some(i=>last.sets[i]<range[0]);
+  return {loads:fitSets(last.loads.slice(), n, w), reps:fitSets(last.sets.map(Number), n, range[0]),
+    hint: low ? `Last time ${txt}. Some sets fell under ${range[0]} reps: stay at ${w} kg until every set reaches ${range[0]} or more.` : `Last time ${txt}. Same weight; add a rep to a set when you can, and go up once every set reaches ${range[1]}.`};
+}
+// A draft entry for one gym pattern today: the movement, the suggested loads and reps, and the number of sets.
+function gymEntryFor(slot, n, range){
+  const plan = R(), mid = moveFor(plan, slot), M = GYM.moves[mid], info = gymInfo(plan), rg = M.unit==="s" ? [30,60] : range;
+  const sug = nextGym(mid, rg, M.inc, n);
+  const loads = info.deload ? sug.loads.map(l=>roundTo(l*.85, M.inc)) : sug.loads;
+  return {gym:true, slot, move:mid, range:rg, hint:sug.hint, sets:sug.reps, loads, done:Array(n).fill(false)};
+}
+function gymSets(it, plan){
+  const info = gymInfo(plan);
+  if(info.deload) return 2;
+  return Math.min(it.kind==="compound" ? 6 : 5, it.sets + (it.kind==="compound" ? info.ramp : 0));
+}
 
 /* ---------- Routine generator: home training ---------- */
 // Rules and sources are shown in the Routine tab (EVIDENCE below). Weekly hard sets per muscle, for someone with some experience.
@@ -1293,6 +1458,144 @@ function buildHomePlan(inp){
   };
 }
 
+/* ---------- Routine generator: gym training ---------- */
+const WARMUP_GYM = ["5 minutes of easy cardio to warm up","Arm circles, leg swings and hip circles (1–2 minutes)","Before the first lift: 1 × 8 at about 50% of the working weight, then 1 × 5 at about 70%","Before each later lift: one light set of 6–8 reps"];
+const GYM_REPS = {strength:{compound:[3,6], iso:[8,12]}, muscle:{compound:[6,12], iso:[10,20]}, general:{compound:[8,15], iso:[10,15]}};
+const GYM_REST = {strength:180, muscle:120, general:120};
+const GYM_EFFORT = {
+  general:"Leave 2–3 reps in the tank on most sets and 1–2 on the last set of each lift. Rest 2 minutes on the big lifts, about 90 seconds on accessories.",
+  muscle:"Leave 1–3 reps in the tank on most sets and 0–1 on the last set of each exercise. Rest 2–3 minutes on compounds and 1–2 minutes on accessories. Add a rep, or a little weight, whenever you can.",
+  strength:"Work at 3–6 reps with clean form and leave 2–3 reps in the tank on the main lifts. Rest 3 minutes between heavy sets. Add weight when every set reaches 6."
+};
+// Which patterns serve each muscle, and in what share, by goal.
+const GYM_POLICY = {
+  muscle:{chest:[["hpush",.7],["fly",.3]], back:[["hpull",.5],["vpull",.5]], delts:[["vpush",.45],["lateral",.35],["rear",.2]], triceps:[["triceps",1]], biceps:[["biceps",1]], quads:[["squat",.5],["unilat",.25],["legext",.25]], hamglute:[["hinge",.55],["legcurl",.45]], calves:[["calves",1]], core:[["core",1]]},
+  general:{chest:[["hpush",1]], back:[["hpull",.5],["vpull",.5]], delts:[["vpush",1]], triceps:[["triceps",1]], biceps:[["biceps",1]], quads:[["squat",.7],["unilat",.3]], hamglute:[["hinge",1]], calves:[["calves",1]], core:[["core",1]]},
+  strength:{chest:[["hpush",1]], back:[["hpull",.5],["vpull",.5]], delts:[["vpush",1]], triceps:[["triceps",1]], biceps:[["biceps",1]], quads:[["squat",1]], hamglute:[["hinge",1]], calves:[["calves",1]], core:[["core",1]]}
+};
+const SLOT_ORDER = ["squat","hinge","hpush","hpull","vpull","vpush","unilat","legext","legcurl","fly","lateral","rear","triceps","biceps","calves","core"];
+const SLOT_PRIORITY = ["squat","hpush","hpull","hinge","vpull","vpush","unilat","triceps","biceps","lateral","legext","legcurl","fly","rear","calves","core"];
+const slotCost = s => GYM.slots[s].kind==="compound" ? 3 : 2;
+const slotCap = s => GYM.slots[s].kind==="compound" ? 5 : 4;
+const slotMuscle = s => GYM.slots[s].main;
+// A day trains a slot when it trains the slot's muscle (rear delts also go on back days).
+const slotOnDay = (s, type) => DAY_MUSCLES[type].includes(slotMuscle(s)) || (s==="rear" && DAY_MUSCLES[type].includes("back"));
+
+function buildGymPlan(inp){
+  const g = inp.goal, Bm = LENGTHS[inp.len].min-8, C = inp.days*Bm, mult = EXPERIENCE[inp.exp].mult, notes = [];
+  const equip = new Set([...inp.equip, "body"]);
+  const slotOK = s => GYM.slots[s].moves.some(id=>equip.has(GYM.moves[id].eq));
+  // 1. Weekly direct sets per muscle: the target less what other lifts already give it.
+  const T = {}; MUSC.forEach(m=>{ T[m] = Math.round(TARGETS[g][m]*mult) });
+  const policy = GYM_POLICY[g];
+  const usable = m => policy[m].filter(([s])=>slotOK(s));
+  const direct = {};
+  ["chest","back","quads","hamglute"].forEach(m=>{ direct[m] = usable(m).length ? T[m] : 0 });
+  const slotMain = {chest:"hpush", back:"hpull", delts:"vpush", quads:"squat", hamglute:"hinge"};
+  const indirect = m => Object.entries(direct).reduce((a,[k,s])=>{ const sl = (policy[k]||[]).map(x=>x[0]); return a + s*(sl.reduce((q,x)=>q+((GYM.slots[x].also[m]||0)*(policy[k].find(y=>y[0]===x)[1])),0)) }, 0);
+  const floorMin = (m) => g==="muscle" && ["triceps","biceps","calves","core"].includes(m) ? 4 : 2;
+  ["delts","triceps","biceps"].forEach(m=>{ const need = Math.round(T[m]-indirect(m)); direct[m] = usable(m).length && (need>=2 || floorMin(m)>2) ? Math.max(need, floorMin(m)>2?floorMin(m):0) : 0 });
+  direct.calves = usable("calves").length && T.calves>=2 ? Math.max(T.calves, floorMin("calves")>2?4:0) : 0;
+  direct.core = usable("core").length && T.core>=2 ? Math.max(T.core, floorMin("core")>2?4:0) : 0;
+  // 2. Fit the week to the minutes available; longer sessions get more volume, up to 1.5 times the target.
+  const sum = o => Object.values(o).reduce((a,b)=>a+b,0), Cs = C/2.7;
+  if(sum(direct) > Cs){ const f = Cs/sum(direct); MUSC.forEach(m=>{ direct[m] = Math.round(direct[m]*f) }) }
+  MUSC.forEach(m=>{ if(direct[m]===1) direct[m] = 0 });
+  const lastM = fn => [...["calves","biceps","triceps","core","delts","hamglute","back","chest","quads"]].find(fn);
+  while(sum(direct) > Cs){ const c = lastM(m=>direct[m]>2); if(c){ direct[c]--; continue } const d = lastM(m=>direct[m]>0); direct[d] = 0 }
+  const ratio = m => (direct[m]+indirect(m))/Math.max(1,T[m]);
+  const order = ["quads","chest","back","hamglute","delts","core","triceps","biceps","calves"];
+  while(sum(direct) < Cs*0.9){
+    const c = order.filter(m=>usable(m).length && T[m]>=2 && direct[m]+indirect(m) < T[m]*1.5).sort((a,b)=>ratio(a)-ratio(b))[0];
+    if(!c) break;
+    direct[c] += direct[c] ? 1 : 2;
+  }
+  // 3. Share each muscle's sets between its patterns (largest remainder), merging tiny shares into the main pattern.
+  const slotSets = {};
+  MUSC.forEach(m=>{
+    const s = direct[m]; if(!s) return;
+    const list = usable(m), tot = list.reduce((a,[,sh])=>a+sh,0);
+    const raw = list.map(([sl,sh])=>[sl, s*sh/tot]); const fl = raw.map(([sl,v])=>[sl,Math.floor(v),v-Math.floor(v)]);
+    let left = s - fl.reduce((a,x)=>a+x[1],0); fl.sort((a,b)=>b[2]-a[2]).forEach(x=>{ if(left>0){ x[1]++; left-- } });
+    const main = list[0][0], res = {};
+    fl.forEach(([sl,n])=>{ res[sl] = n });
+    list.forEach(([sl])=>{ if(sl!==main && res[sl]===1){ res[sl] = 0; res[main]++ } });
+    list.forEach(([sl])=>{ if(res[sl]>0) slotSets[sl] = (slotSets[sl]||0)+res[sl] });
+  });
+  // 4. Put each pattern on the days that train it, spread through the week.
+  const days = SPLITS[inp.days].map((type,i)=>({id:"G"+(i+1), label:"Day "+(i+1), type, sets:{}}));
+  const mins = d => Object.entries(d.sets).reduce((a,[s,n])=>a+n*slotCost(s), 0);
+  SLOT_PRIORITY.forEach(sl=>{
+    const s = slotSets[sl]; if(!s) return;
+    const avail = days.filter(d=>slotOnDay(sl,d.type)); if(!avail.length) return;
+    let o = Math.min(avail.length, Math.max(1, Math.min(3, Math.floor(s/2))));
+    while(s/o>slotCap(sl) && o<avail.length) o++;
+    let chosen;
+    if(o>=avail.length) chosen = avail;
+    else if(o===1) chosen = [avail.reduce((a,d)=>mins(d)<mins(a)?d:a, avail[0])];
+    else chosen = Array.from({length:o}, (_,k)=>avail[Math.round(k*(avail.length-1)/(o-1))]);
+    const base = Math.floor(s/o), extra = s%o;
+    chosen.forEach((d,k)=>{ d.sets[sl] = Math.min(slotCap(sl), base+(k<extra?1:0)) });
+  });
+  // 5. Keep each day inside its time: trim the least important work down to two sets, then drop it.
+  const lastS = (d,fn) => [...SLOT_PRIORITY].reverse().find(s=>d.sets[s] && fn(s));
+  days.forEach(d=>{ while(mins(d) > Bm){ const c = lastS(d, s=>d.sets[s]>2); if(c){ d.sets[c]--; continue } const x = lastS(d, ()=>true); delete d.sets[x] } });
+  // A day with nothing to train (for example a leg day with only cable machines) is left out and the rest renumbered.
+  const kept = days.filter(d=>mins(d)>0);
+  if(kept.length < days.length){
+    notes.push(`${days.length-kept.length} of the ${days.length} days had nothing to train with the equipment you chose, so the plan has ${kept.length} days. Add machines or dumbbells to get the full week.`);
+    days.length = 0; kept.forEach((d,i)=>{ d.id = "G"+(i+1); d.label = "Day "+(i+1); days.push(d) });
+  }
+  // 6. Turn patterns into ordered lifts with rep ranges.
+  const reps = GYM_REPS[g], dsets = {};
+  days.forEach(d=>{
+    const items = SLOT_ORDER.filter(s=>d.sets[s]).map(s=>({gym:true, slot:s, kind:GYM.slots[s].kind, sets:d.sets[s], reps:reps[GYM.slots[s].kind]}));
+    let firstCompound = true;
+    d.blocks = items.map(it=>{ const title = it.kind==="compound" ? (firstCompound ? (firstCompound=false, "Main lift") : "Compound lift") : "Accessory";
+      dsets[it.slot] = (dsets[it.slot]||0)+it.sets; return {title, min:it.sets*slotCost(it.slot), pair:false, items:[it]} });
+    d.setCount = items.reduce((a,x)=>a+x.sets,0); d.min = Math.round(8+mins(d)); d.focus = DAY_FOCUS[d.type];
+  });
+  // 7. The weekly picture.
+  const weekly = {};
+  MUSC.forEach(m=>{
+    let dir = 0, ind = 0;
+    Object.entries(dsets).forEach(([sl,n])=>{ if(slotMuscle(sl)===m) dir += n; ind += n*(GYM.slots[sl].also[m]||0) });
+    weekly[m] = {direct:dir, indirect:Math.round(ind*2)/2, target:T[m]};
+  });
+  const below = MUSC.filter(m=>weekly[m].direct+weekly[m].indirect < 0.8*weekly[m].target);
+  if(below.length){
+    const missing = Math.round(below.reduce((a,m)=>a+weekly[m].target-weekly[m].direct-weekly[m].indirect, 0));
+    notes.push(`The time you chose does not fit the full ${GOALS[g].name.toLowerCase()} volume: ${below.map(m=>`${MUSC_NAME[m].toLowerCase()} ${Math.round(weekly[m].direct+weekly[m].indirect)} of ${weekly[m].target}`).join(", ")} weekly sets. About ${missing} more sets a week, roughly ${Math.round(missing*2.7)} more minutes, would close the gap: longer sessions or another day.`);
+  }
+  const noSlot = SLOT_ORDER.filter(s=>!slotOK(s) && MUSC.some(m=>(policy[m]||[]).some(([x])=>x===s)));
+  if(noSlot.length) notes.push(`No movement is available for ${noSlot.map(s=>GYM.slots[s].name.toLowerCase()).join(", ")} with the equipment you chose, so that work is left out.`);
+  if(!weekly.biceps.direct && weekly.biceps.indirect) notes.push("Biceps get their work from the rows and pulldowns; there is no separate curl at this volume.");
+  if(!weekly.triceps.direct && weekly.triceps.indirect) notes.push("Triceps get their work from the presses; there is no separate triceps exercise at this volume.");
+  notes.push(`Each block is ${GYM_BLOCK-1} weeks of training and one lighter week. Weights progress with double progression, and the movement for each pattern rotates every block (you can swap any time).`);
+  return {
+    id:"gym", kind:"gym", name:"Gym training", created:new Date().toISOString(), started:todayISO(), cycle:GYM_BLOCK, picks:{}, base:{},
+    equip:[...inp.equip], inputs:{days:days.length, len:inp.len, goal:inp.goal, exp:inp.exp, limits:[], equip:[...inp.equip]},
+    rest:GYM_REST[g], effort:GYM_EFFORT[g], warmup:WARMUP_GYM, weekly, notes,
+    days:days.map(({id,label,focus,blocks,setCount,min})=>({id,label,focus,blocks,setCount,min}))
+  };
+}
+const GYM_BLOCK = 6;
+const EVIDENCE_GYM = [
+  {rule:"Movements and rotation", use:"One movement per pattern, rotated every 6 weeks, with a swap button for any session.",
+   text:"Israetel frames exercise choice by stimulus relative to fatigue and suggests changing movements when they stop feeling productive; blocks of about 4–8 weeks with a lighter week are typical in his writing. Nippard's programs mix compound and isolation lifts. The six-week cycle here is a convention, not a tested figure.",
+   links:[["Stimulus-to-fatigue ratio (summary)","https://outlift.com/stimulus-to-fatigue-ratio-sfr/"],["When to switch exercises (summary)","https://www.boxrox.com/when-to-switch-exercises-for-maximum-muscle-growth/"]],
+   confidence:"Low to medium. Secondary summaries only; I could not confirm exact block lengths from RP directly."},
+  {rule:"Long muscle length", use:"Pick movements that load the muscle through a full range, including the stretched position (RDLs, incline curls, overhead extensions).",
+   text:"Some meta-analyses favour training at long muscle lengths; others find no overall difference, and the effect may be smaller than popular claims. It is a reasonable tie-breaker between similar movements, not a rule.",
+   links:[["Research breakdown (Henselmans)","https://mennohenselmans.com/?p=22772"],["Long-muscle-length training (summary)","https://outlift.com/long-muscle-length-training/"]],
+   confidence:"Low. The evidence is contested."},
+  {rule:"Rep ranges and load", use:"Strength goal 3–6 reps on main lifts; muscle goal 6–12 on compounds and 10–20 on accessories; general 8–15.",
+   text:"Muscle growth is similar across a wide range of loads when sets are taken close to failure; strength gains favour heavier loads.",
+   links:[["Lopez et al. 2021","https://pmc.ncbi.nlm.nih.gov/articles/PMC7706639/"]], confidence:"Medium to high for the load finding; the exact ranges are conventions."},
+  {rule:"Progression", use:"Double progression: add a rep, and when every set reaches the top of the range, add 2.5 kg (2 kg for dumbbells) and start at the bottom.",
+   text:"A standard method with the three coaches; the app suggests the next weight from your last session.", links:[], confidence:"Convention more than a tested protocol."}
+];
+
 const EVIDENCE = [
   {rule:"Weekly hard sets per muscle", use:"General fitness 3–6 up to muscle gain 8–12, depending on experience and the time you have.",
    text:"Israetel puts maintenance near 6 sets, the start of growth near 6–10 and the best range near 10–20. Nippard is commonly cited at 10–20. Ethier argues about 3 may maintain gains and uses about 6 in his sample plan. A 2024 preprint finds diminishing returns past roughly 11 sets, but its figures vary between versions.",
@@ -1316,12 +1619,12 @@ const EVIDENCE = [
 const EVIDENCE_NOTE = "These are general guidelines, not medical advice. The primary papers and the three creators' videos were not read; the figures come from articles that summarise them, so check the links.";
 
 /* ---------- Routine tab ---------- */
-ui.rf = {days:3, len:"mid", goal:"general", exp:"intermediate", limits:[], preview:null};
-function planSummary(p){ const i = p.inputs; return `${i.days} days a week · ${LENGTHS[i.len].label} · ${GOALS[i.goal].name} · ${EXPERIENCE[i.exp].name.toLowerCase()}${i.limits.length?" · "+i.limits.map(k=>LIMITS[k].toLowerCase()).join(", "):""}` }
-const itemName = it => it.sub ? ALT[it.sub][0] : lv(it.ex, S.levels[it.ex]).name;
+ui.rf = {type:"home", days:3, len:"mid", goal:"general", exp:"intermediate", limits:[], equip:["barbell","dumbbell","cable","machine"], preview:null};
+function planSummary(p){ const i = p.inputs; if(p.kind==="gym") return `${i.days} days a week · ${LENGTHS[i.len].label} · ${GOALS[i.goal].name} · ${EXPERIENCE[i.exp].name.toLowerCase()} · ${i.equip.map(k=>GYM_EQUIP[k].toLowerCase()).join(", ")}`; return `${i.days} days a week · ${LENGTHS[i.len].label} · ${GOALS[i.goal].name} · ${EXPERIENCE[i.exp].name.toLowerCase()}${i.limits.length?" · "+i.limits.map(k=>LIMITS[k].toLowerCase()).join(", "):""}` }
+const itemName = it => it.gym ? GYM.moves[moveFor(S.plans.gym || ui.rf.preview, it.slot)].name : it.sub ? ALT[it.sub][0] : lv(it.ex, S.levels[it.ex]).name;
 function planPreview(p){
   const dayCards = p.days.map(d=>`<div class="card"><div class="ex-top"><div><h3>${esc(d.label)}</h3><div class="sub">${esc(d.focus)}</div></div><span class="lvl">${d.setCount} sets · ~${d.min} min</span></div>
-    <ul class="plan-list">${d.blocks.map(b=>`<li>${b.items.map(it=>`<b>${esc(itemName(it))}</b> ${it.sets} sets`).join(b.pair?" <span class=sub>with</span> ":"")}</li>`).join("")}</ul></div>`).join("");
+    <ul class="plan-list">${d.blocks.map(b=>`<li>${b.items.map(it=>`<b>${esc(it.gym ? GYM.moves[moveFor(p, it.slot)].name : itemName(it))}</b> ${it.sets} × ${it.gym ? it.reps[0]+"–"+it.reps[1] : "sets"}`).join(b.pair?" <span class=sub>with</span> ":"")}</li>`).join("")}</ul></div>`).join("");
   const rows = MUSC.map(m=>{ const w = p.weekly[m], eff = w.direct+w.indirect, ok = eff>=.8*w.target;
     return `<tr><td>${MUSC_NAME[m]}</td><td>${w.direct}</td><td>${w.indirect||"–"}</td><td>${w.target}</td><td><span class="pill ${ok?"ok":"stall"}">${ok?"on target":"below"}</span></td></tr>` }).join("");
   return `<div class="block">
@@ -1342,24 +1645,27 @@ function viewRoutine(){
     <div class="data-actions">
       ${S.routine!=="calisthenics"?`<button type="button" class="btn ghost" data-act="useroutine" data-id="calisthenics">Switch to Calisthenics</button>`:""}
       ${home && S.routine!=="home"?`<button type="button" class="btn ghost" data-act="useroutine" data-id="home">Switch to Home training</button>`:""}
+      ${S.plans.gym && S.routine!=="gym"?`<button type="button" class="btn ghost" data-act="useroutine" data-id="gym">Switch to Gym training</button>`:""}
     </div></div>`;
   const types = `<div class="card"><h3>Routine types</h3><div class="tools">
-    <button type="button" class="tbtn" aria-pressed="true">Home training</button>
-    <button type="button" class="tbtn" disabled>Gym · soon</button>
+    <button type="button" class="tbtn" data-act="rftype" data-v="home" aria-pressed="${f.type==="home"}">Home training</button>
+    <button type="button" class="tbtn" data-act="rftype" data-v="gym" aria-pressed="${f.type==="gym"}">Gym training</button>
     <button type="button" class="tbtn" disabled>Cardio · soon</button></div>
-    <div class="sub">Home training: movement patterns and muscle groups with bodyweight only (a floor, a wall, a chair or table). The calisthenics routine stays as it is.</div></div>`;
+    <div class="sub">${f.type==="gym" ? "Gym training: the key movement patterns, several movements for each, with weights logged and the next weight suggested." : "Home training: movement patterns and muscle groups with bodyweight only (a floor, a wall, a chair or table)."} The calisthenics routine stays as it is.</div></div>`;
+  const gymP = S.plans.gym, gym = f.type==="gym";
   const form = `<div class="card">
-    <h3>${home?"Rebuild":"Build"} your home routine</h3>
+    <h3>${(gym?gymP:home)?"Rebuild":"Build"} your ${gym?"gym":"home"} routine</h3>
     <div class="sub">Days per week</div><div class="tools">${[2,3,4,5,6].map(n=>opt("days",n,n)).join("")}</div>
     <div class="sub">Session length</div><div class="tools">${Object.entries(LENGTHS).map(([k,v])=>opt("len",k,v.label)).join("")}</div>
     <div class="sub">Goal</div><div class="tools">${Object.entries(GOALS).map(([k,v])=>opt("goal",k,v.name)).join("")}</div>
     <div class="sub">Experience</div><div class="tools">${Object.entries(EXPERIENCE).map(([k,v])=>opt("exp",k,v.name)).join("")}</div>
-    <div class="sub">Anything to work around? (optional)</div><div class="tools">${Object.entries(LIMITS).map(([k,v])=>`<button type="button" class="tbtn" data-act="rflim" data-k="${k}" aria-pressed="${f.limits.includes(k)}">${esc(v)}</button>`).join("")}</div>
-    ${f.limits.length?`<div class="banner deload">If something hurts, stop and see a physiotherapist or doctor. This plan only avoids the exercises that most often aggravate it.</div>`:""}
+    ${gym ? `<div class="sub">Equipment you can use (pull-ups and other bodyweight work are always allowed)</div><div class="tools">${Object.entries(GYM_EQUIP).map(([k,v])=>`<button type="button" class="tbtn" data-act="rfeq" data-k="${k}" aria-pressed="${f.equip.includes(k)}">${esc(v)}</button>`).join("")}</div>`
+    : `<div class="sub">Anything to work around? (optional)</div><div class="tools">${Object.entries(LIMITS).map(([k,v])=>`<button type="button" class="tbtn" data-act="rflim" data-k="${k}" aria-pressed="${f.limits.includes(k)}">${esc(v)}</button>`).join("")}</div>
+    ${f.limits.length?`<div class="banner deload">If something hurts, stop and see a physiotherapist or doctor. This plan only avoids the exercises that most often aggravate it.</div>`:""}`}
     <div class="finish"><button type="button" class="btn primary" data-act="rfgen">Preview plan</button></div>
   </div>`;
   const prev = f.preview ? `<div class="block-h"><h2 id="rf-preview">Preview</h2></div>${planPreview(f.preview)}<div class="finish"><button type="button" class="btn primary" data-act="rfuse">Use this plan</button><button type="button" class="btn ghost" data-act="rfdiscard">Discard</button></div>` : "";
-  const ev = `<div class="block-h"><h2>Why these rules</h2></div><div class="card prose"><div class="sub">${esc(EVIDENCE_NOTE)}</div>${EVIDENCE.map(e=>`<div><b>${esc(e.rule)}.</b> ${esc(e.use)}<div class="sub">${esc(e.text)}</div>${e.links.length?`<div class="sub">${e.links.map(([t,u])=>`<a href="${u}" target="_blank" rel="noopener">${esc(t)}</a>`).join(" · ")}</div>`:""}<div class="sub"><i>${esc(e.confidence)}</i></div></div>`).join("")}</div>`;
+  const ev = `<div class="block-h"><h2>Why these rules</h2></div><div class="card prose"><div class="sub">${esc(EVIDENCE_NOTE)}</div>${(f.type==="gym" ? EVIDENCE.concat(EVIDENCE_GYM) : EVIDENCE).map(e=>`<div><b>${esc(e.rule)}.</b> ${esc(e.use)}<div class="sub">${esc(e.text)}</div>${e.links.length?`<div class="sub">${e.links.map(([t,u])=>`<a href="${u}" target="_blank" rel="noopener">${esc(t)}</a>`).join(" · ")}</div>`:""}<div class="sub"><i>${esc(e.confidence)}</i></div></div>`).join("")}</div>`;
   return `<div class="block">${active}${types}${form}${prev}${ev}</div>`;
 }
 function setRest(len){
@@ -1384,6 +1690,7 @@ async function finish(){
   const deload=isDeload(), ups=[], entries={};
   Object.entries(draft.entries).forEach(([ex,e])=>{
     if(!e.done.some(Boolean)) return;
+    if(e.gym){ entries["g:"+e.move] = {gym:true, slot:e.slot, sets:e.sets.map(Number), loads:e.loads.map(Number), done:e.done.slice()}; return }
     if(e.sub){
       const key = entries["alt:"+e.sub] ? `alt:${e.sub}:${ex}` : "alt:"+e.sub;
       entries[key]={level:0, sets:e.sets.map(Number), done:e.done.slice(), subFor:ex};
@@ -1412,14 +1719,27 @@ document.addEventListener("click", async ev=>{
     const e=draft.entries[ex]; e.sets[i]=Math.max(0,Number(e.sets[i])+(a==="inc"?1:-1)*Number(b.dataset.step)); saveDraft();
     const inp=document.getElementById(`v-${ex}-${i}`); if(inp) inp.value=e.sets[i]; refreshProgress(ex);
   }
+  else if(a==="linc"||a==="ldec"){
+    const e=draft.entries[ex]; e.loads[i]=roundTo(Math.max(0,Number(e.loads[i])+(a==="linc"?1:-1)*Number(b.dataset.step)), Number(b.dataset.step)); saveDraft();
+    const inp=document.getElementById(`l-${ex}-${i}`); if(inp) inp.value=e.loads[i];
+  }
+  else if(a==="gpick"||a==="gauto"){
+    const e=draft.entries[ex], plan=R();
+    if(e.done.some(Boolean)){ toast("Untick the sets you have done before swapping this movement."); return }
+    plan.picks = plan.picks || {};
+    if(a==="gpick") plan.picks[e.slot] = b.dataset.id; else delete plan.picks[e.slot];
+    try{ saveLocal() }catch(er){ toast("Could not save your choice on this phone."); return }
+    draft.entries[ex] = gymEntryFor(e.slot, e.sets.length, e.range); ui.swap.delete(ex); saveDraft(); refreshCard(ex);
+  }
   else if(a==="done"){ const e=draft.entries[ex]; e.done[i]=!e.done[i]; saveDraft(); b.setAttribute("aria-pressed", e.done[i]); refreshProgress(ex); if(e.done[i]) startTimer() }
   else if(a==="hold"){ toggleHold(ex,i) }
   else if(a==="show"){ ui.show.has(ex) ? ui.show.delete(ex) : ui.show.add(ex); refreshCard(ex) }
   else if(a==="pause"){
     ui.frozen.has(ex) ? ui.frozen.delete(ex) : ui.frozen.set(ex, FIG.s);
     const f = tab==="train" && cardEl(ex) && cardEl(ex).querySelector(".fig"); if(!f){ render(); return }
-    const e=draft.entries[ex]; f.outerHTML = figHTML(ex,e,spec(ex,e)); b.textContent = ui.frozen.has(ex) ? "▶ Play" : "⏸ Pause"; startFigures();
+    const e=draft.entries[ex]; f.outerHTML = figHTML(ex,e,e.gym?null:spec(ex,e)); b.textContent = ui.frozen.has(ex) ? "▶ Play" : "⏸ Pause"; startFigures();
   }
+  else if(a==="gshow"){ ui.progG.has(b.dataset.id) ? ui.progG.delete(b.dataset.id) : ui.progG.add(b.dataset.id); render() }
   else if(a==="plevel"){ ui.prog.get(ex)===i ? ui.prog.delete(ex) : ui.prog.set(ex,i); render() }
   else if(a==="swap"){ ui.swap.has(ex) ? ui.swap.delete(ex) : ui.swap.add(ex); refreshCard(ex) }
   else if(a==="missing"){ const k=b.dataset.k, m=draft.missing; m.includes(k) ? m.splice(m.indexOf(k),1) : m.push(k); saveDraft(); render() }
@@ -1443,11 +1763,13 @@ document.addEventListener("click", async ev=>{
   else if(a==="edcancel"){ ui.edit = null; render() }
   else if(a==="edsave"){ saveEdit() }
   else if(a==="edrm"){ delete ui.edit.entries[b.dataset.k]; render() }
+  else if(a==="rftype"){ ui.rf.type = b.dataset.v; ui.rf.preview = null; render() }
+  else if(a==="rfeq"){ const L = ui.rf.equip, k = b.dataset.k; if(L.includes(k) && L.length===1){ toast("Keep at least one kind of equipment selected.") } else { L.includes(k) ? L.splice(L.indexOf(k),1) : L.push(k); ui.rf.preview = null; render() } }
   else if(a==="rf"){ ui.rf[b.dataset.k] = b.dataset.k==="days" ? +b.dataset.v : b.dataset.v; ui.rf.preview = null; render() }
   else if(a==="rflim"){ const L = ui.rf.limits, k = b.dataset.k; L.includes(k) ? L.splice(L.indexOf(k),1) : L.push(k); ui.rf.preview = null; render() }
-  else if(a==="rfgen"){ ui.rf.preview = buildHomePlan(ui.rf); render(); const pv = document.getElementById("rf-preview"); if(pv) pv.scrollIntoView({behavior:"smooth"}) }
+  else if(a==="rfgen"){ ui.rf.preview = ui.rf.type==="gym" ? buildGymPlan(ui.rf) : buildHomePlan(ui.rf); render(); const pv = document.getElementById("rf-preview"); if(pv) pv.scrollIntoView({behavior:"smooth"}) }
   else if(a==="rfdiscard"){ ui.rf.preview = null; render() }
-  else if(a==="rfuse"){ if(ui.rf.preview){ const prev = S.plans.home; S.plans.home = ui.rf.preview; if(useRoutine("home")) ui.rf.preview = null; else { if(prev) S.plans.home = prev; else delete S.plans.home } } }
+  else if(a==="rfuse"){ if(ui.rf.preview){ const id = ui.rf.preview.id, prev = S.plans[id]; S.plans[id] = ui.rf.preview; if(useRoutine(id)) ui.rf.preview = null; else { if(prev) S.plans[id] = prev; else delete S.plans[id] } } }
   else if(a==="useroutine"){ useRoutine(b.dataset.id) }
   else if(a==="askdel"){ document.getElementById("del-"+b.dataset.id).innerHTML=`<button type="button" class="btn danger" data-act="del" data-id="${b.dataset.id}">Confirm delete</button> <button type="button" class="btn ghost" data-act="nodel">Keep</button>` }
   else if(a==="nodel"){ render() }
@@ -1461,6 +1783,7 @@ document.addEventListener("change", ev=>{
   const t=ev.target;
   if(t.id==="importfile"){ if(t.files && t.files[0]) importBackup(t.files[0]); t.value=""; return }
   if(t.dataset.ed && ui.edit){ editChange(t); return }
+  if(t.dataset.act==="lval"){ draft.entries[t.dataset.ex].loads[+t.dataset.i]=Math.max(0,Number(t.value)||0); saveDraft(); return }
   if(t.dataset.act!=="val") return;
   draft.entries[t.dataset.ex].sets[+t.dataset.i]=Math.max(0,Number(t.value)||0); saveDraft(); refreshProgress(t.dataset.ex);
 });
