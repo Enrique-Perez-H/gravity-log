@@ -123,6 +123,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .hist .row{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
 .hist .meta{font-family:var(--mono);font-size:.78rem}
 .timer{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:10;display:flex;gap:6px;align-items:center;background:var(--ink);color:var(--bg);border-radius:99px;padding:6px 6px 6px 14px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.hold{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;height:38px;min-width:42px;padding:0 8px;margin-left:6px;font:500 .85rem var(--mono);cursor:pointer}
+.hold.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .timer b{font:500 1rem var(--mono);min-width:3.2em;text-align:center}
 .timer button{border:0;border-radius:99px;padding:8px 12px;background:var(--accent);color:var(--accent-ink);font-weight:600;cursor:pointer}
 .timer button.alt{background:transparent;color:var(--bg)}
@@ -188,6 +190,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 <div class="timer" id="timer">
   <b id="tclock">1:30</b>
   <button id="tstart" type="button">Rest 90 s</button>
+  <button id="tlen" class="alt" type="button" aria-label="Change the rest length">90 s</button>
   <button id="treset" class="alt" type="button" hidden>Stop</button>
 </div>
 <div class="toast" id="toast" hidden></div>
@@ -717,6 +720,12 @@ function weekNo(){
   return Math.floor((now-first)/(7*864e5))+1;
 }
 const isDeload = () => S.sessions.length>0 && weekNo() % DELOAD_EVERY === 0;
+// Every logged use of an alternative, oldest first: [{date, sets, done, subFor}].
+function altEntries(id){
+  const out = [];
+  S.sessions.forEach(s=>Object.entries(s.entries||{}).forEach(([k,e])=>{ if(altOf(k)===id) out.push({date:s.date,...e}) }));
+  return out;
+}
 function entriesFor(ex){ return S.sessions.filter(s=>s.entries && s.entries[ex]).map(s=>({date:s.date,...s.entries[ex]})) }
 function lastValues(ex, level){
   const e = entriesFor(ex).filter(x=>x.level===level).pop();
@@ -766,6 +775,24 @@ function render(){
 }
 
 const ui = {show:new Set(), swap:new Set(), video:new Set(), frozen:new Map()};
+// Taps change only what they affect, so a playing video, a photo or an open panel is never rebuilt by a set tick.
+const cardEl = ex => document.querySelector(`.card[data-card="${ex}"]`);
+function refreshFooter(){
+  if(!draft) return;
+  const done = Object.values(draft.entries).reduce((a,e)=>a+e.done.filter(Boolean).length,0), total = Object.keys(draft.entries).length*SETS;
+  const c = document.getElementById("fin-count"), b = document.getElementById("fin-btn");
+  if(c) c.textContent = `${done}/${total} sets done`;
+  if(b) b.disabled = !done;
+}
+function refreshProgress(ex){
+  const e = draft.entries[ex], c = cardEl(ex);
+  if(c) c.querySelector(".target").innerHTML = targetHTML(spec(ex,e), e);
+  refreshFooter();
+}
+function refreshCard(ex){
+  const c = cardEl(ex); if(!c){ render(); return }
+  c.outerHTML = exCard(ex); startFigures(); refreshFooter();
+}
 const ytSearch = name => "https://www.youtube.com/results?search_query="+encodeURIComponent(name+" calisthenics tutorial");
 function swapPanel(ex, e, sp){
   const chips = Object.entries(EQ).map(([k,t])=>`<button type="button" class="chip" data-act="missing" data-k="${k}" aria-pressed="${draft.missing.includes(k)}">${esc(t)}</button>`).join("");
@@ -781,6 +808,8 @@ function swapPanel(ex, e, sp){
     <div class="sub">Only for this session. Your level stays where it is, and the alternative is logged under its own name.</div>
   </div>`;
 }
+// The animated figure or photo of a card, on its own so Pause can swap just this part.
+function figHTML(ex, e, sp){ return visualHTML(sp.poses, musclesFor(ex,e), ui.frozen.get(ex), ex, photoOf(ex,e)) }
 function showPanel(ex, e, sp){
   const key = e.sub ? "alt:"+e.sub : ex+":"+e.level;
   const id = e.sub ? null : videoOf(ex,e.level);
@@ -789,13 +818,18 @@ function showPanel(ex, e, sp){
     ? `<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/${id}?rel=0&playsinline=1" title="${esc(sp.name)} video" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`
     : `<button type="button" class="btn ghost" data-act="video" data-key="${esc(key)}">▶ Load video (needs internet)</button>`;
   return `<div class="panel">
-    ${visualHTML(sp.poses, mu, ui.frozen.get(ex), ex, photo)}
+    ${figHTML(ex,e,sp)}
     <div class="tools">${dynamic && !reducedMotion()?`<button type="button" class="tbtn" data-act="pause" data-ex="${ex}">${ui.frozen.has(ex)?"▶ Play":"⏸ Pause"}</button>`:""}</div>
     <div class="sub">${photo?"Start and end of the movement. Photos: free-exercise-db, public domain.":`${dynamic?"Start and end of the movement":"Hold position"}, side view.`}${mu.main.length?` Main muscles in red: ${mu.main.map(k=>MUSCLE_NAME[k]).join(", ")}.`:""}${mu.also.length?` Also working, in amber: ${mu.also.map(k=>MUSCLE_NAME[k]).join(", ")}.`:""} A simplified model; follow the cue above.</div>
     ${video}
     <div class="sub">${id?`<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener">Open on YouTube</a> · `:""}<a href="${ytSearch(sp.name)}" target="_blank" rel="noopener">Search YouTube for ${esc(sp.name)}</a></div>
   </div>`;
 }
+function targetHTML(sp, e){
+  const unit = sp.unit==="s" ? "s" : "reps", allTop = !e.sub && e.sets.every((v,i)=>e.done[i] && v>=sp.max);
+  return `Target ${SETS} × ${sp.min}–${sp.max} ${unit}${allTop?' · <span class="hit">top of range hit, levels up on finish</span>':''}`;
+}
+const holdRunning = (ex,i) => HOLD && HOLD.ex===ex && HOLD.i===i;
 function exCard(ex){
   const e = draft.entries[ex], sp = spec(ex,e), step = sp.unit==="s" ? 5 : 1, unit = sp.unit==="s" ? "s" : "reps";
   const sets = e.sets.map((val,i)=>`
@@ -808,19 +842,19 @@ function exCard(ex){
           <button type="button" data-act="inc" data-ex="${ex}" data-i="${i}" data-step="${step}" aria-label="More">+</button>
         </div>
         <span class="unit">${unit}</span>
+        ${sp.unit==="s"?`<button type="button" class="hold${holdRunning(ex,i)?" on":""}" data-act="hold" data-ex="${ex}" data-i="${i}" aria-label="${holdRunning(ex,i)?"Stop":"Start"} the hold timer for set ${i+1}">${holdRunning(ex,i)?"■ "+holdElapsed()+" s":"▶"}</button>`:""}
       </div>
       <button type="button" class="tick" data-act="done" data-ex="${ex}" data-i="${i}" aria-pressed="${e.done[i]}" aria-label="Mark set ${i+1} done">✓</button>
     </div>`).join("");
-  const allTop = !e.sub && e.sets.every((v,i)=>e.done[i] && v>=sp.max);
   const missing = sp.needs.filter(q=>draft.missing.includes(q));
   const needs = sp.needs.length ? `<div class="needs${missing.length?" miss":""}">Needs: ${sp.needs.map(q=>esc(EQ[q].toLowerCase())).join(", ")}${missing.length?". You marked this as missing, tap No equipment?":""}</div>` : "";
   const open = ui.swap.has(ex), shown = ui.show.has(ex);
-  return `<div class="card">
+  return `<div class="card" data-card="${ex}">
     <div class="ex-top"><div><div class="pattern">${esc(EX[ex].pattern)}</div><h3>${esc(sp.name)}</h3></div>
     ${e.sub?'<span class="pill new">Alternative</span>':`<span class="lvl">Level ${e.level+1}/${EX[ex].levels.length}</span>`}</div>
     <div class="cue">${esc(sp.cue)}</div>
     ${e.sub?`<div class="needs">Standing in for ${esc(lv(ex,e.level).name)}. Level stays the same.</div>`:needs}
-    <div class="target">Target ${SETS} × ${sp.min}–${sp.max} ${unit}${allTop?' · <span class="hit">top of range hit, levels up on finish</span>':''}</div>
+    <div class="target">${targetHTML(sp,e)}</div>
     <div class="sets">${sets}</div>
     <div class="tools">
       <button type="button" class="tbtn" data-act="show" data-ex="${ex}" aria-expanded="${shown}">Show me</button>
@@ -851,26 +885,26 @@ function viewTrain(){
     <div class="checklist">${WARMUP.map((w,i)=>`<button type="button" class="check" data-act="warm" data-i="${i}" aria-pressed="${draft.warm[i]}"><span class="box">✓</span><span class="t">${esc(w)}</span></button>`).join("")}</div>
     <div class="block-h"><h3>2 · Skill, while fresh</h3><span class="min">~7 min</span></div>
     ${exCard("handstand")}
-    ${D.pairs.map((p,k)=>`<div class="block-h"><h3>${k+3} · Pair ${String.fromCharCode(65+k)}</h3><span class="min">alternate, 90 s rest · ~8 min</span></div><div class="pair">${exCard(p[0])}${exCard(p[1])}</div>`).join("")}
+    ${D.pairs.map((p,k)=>`<div class="block-h"><h3>${k+3} · Pair ${String.fromCharCode(65+k)}</h3><span class="min">alternate, <span class="restn">${rest.len}</span> s rest · ~8 min</span></div><div class="pair">${exCard(p[0])}${exCard(p[1])}</div>`).join("")}
     <div class="card">
       <div class="finish">
-        <button type="button" class="btn primary" data-act="finish" ${doneSets?"":"disabled"}>Finish session</button>
+        <button type="button" id="fin-btn" class="btn primary" data-act="finish" ${doneSets?"":"disabled"}>Finish session</button>
         <button type="button" class="btn ghost" data-act="resetdraft">Clear</button>
-        <span class="sub">${doneSets}/${totalSets} sets done</span>
+        <span class="sub" id="fin-count">${doneSets}/${totalSets} sets done</span>
       </div>
       <div class="sub">On finish, an exercise moves up a level when all ${SETS} sets are done at the top of the range.</div>
     </div>
   </div>`;
 }
 
-function spark(ex){
-  const es = entriesFor(ex); if(es.length<2) return `<div class="last">${es.length?"1 session logged":"No sessions yet"}</div>`;
-  const pts = es.slice(-20).map(e=>score(e,ex)), n=pts.length;
+function spark(ex, es, pts, label){
+  es = es || entriesFor(ex); if(es.length<2) return `<div class="last">${es.length?"1 session logged":"No sessions yet"}</div>`;
+  pts = pts || es.slice(-20).map(e=>score(e,ex)); const n=pts.length;
   const lo = Math.floor(Math.min(...pts)), hi = Math.ceil(Math.max(...pts)+.01);
   const W=200,H=56,P=4, x=i=>P+i*(W-2*P)/(n-1), y=v=>H-P-(v-lo)/(hi-lo||1)*(H-2*P);
   const d = pts.map((v,i)=>`${i?"L":"M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
-  const grid = []; for(let g=lo; g<=hi; g++) grid.push(`<line x1="0" x2="${W}" y1="${y(g).toFixed(1)}" y2="${y(g).toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`);
-  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(EX[ex].name)} progress over ${n} sessions">
+  const grid = [], gs = Math.max(1, Math.ceil((hi-lo)/5)); for(let g=lo; g<=hi; g+=gs) grid.push(`<line x1="0" x2="${W}" y1="${y(g).toFixed(1)}" y2="${y(g).toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`);
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(label || EX[ex].name)} progress over ${n} sessions">
     ${grid.join("")}
     <path d="${d} L${x(n-1)},${H-P} L${x(0)},${H-P}Z" fill="var(--accent-soft)" stroke="none"/>
     <path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>
@@ -899,6 +933,21 @@ function calendar(){
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sessions over the last 12 weeks">${out}</svg>`;
 }
 
+function swapCards(){
+  const ids = Object.keys(ALT).filter(id=>altEntries(id).length);
+  if(!ids.length) return "";
+  const cards = ids.map(id=>{
+    const es = altEntries(id), last = es[es.length-1], A = ALT[id], u = A[4]==="s" ? "s" : "reps";
+    const best = e => Math.max(0, ...e.sets.filter((v,i)=>e.done[i]).map(Number));
+    const forNames = [...new Set(es.map(e=>EX[e.subFor] && EX[e.subFor].name).filter(Boolean))].join(", ");
+    return `<div class="card">
+      <div class="ex-top"><div><div class="pattern">${esc(forNames?"Standing in for "+forNames:"Alternative")}</div><h3>${esc(A[0])}</h3></div><span class="pill new">Alternative</span></div>
+      ${spark(null, es, es.slice(-20).map(best), A[0])}
+      <div class="last">Last ${fmtDate(last.date)}: ${last.sets.map((v,i)=>last.done[i]?v:"–").join(" / ")} ${u}</div>
+    </div>`;
+  }).join("");
+  return `<div class="block-h"><h2>Swaps</h2><span class="sub">Alternatives you used when equipment was missing. Line = best set</span></div><div class="grid2">${cards}</div>`;
+}
 function viewProgress(){
   const n=S.sessions.length;
   const monday=new Date(); monday.setHours(0,0,0,0); monday.setDate(monday.getDate()-((monday.getDay()+6)%7));
@@ -919,7 +968,8 @@ function viewProgress(){
   const hist = S.sessions.slice().reverse().slice(0,30).map(s=>{
     const sets=Object.values(s.entries||{}).reduce((a,e)=>a+e.done.filter(Boolean).length,0);
     const ups=(s.levelUps||[]).map(ex=>EX[ex]?EX[ex].name:ex).join(", ");
-    return `<div class="card"><div class="row"><div><b>${fmtDate(s.date)}</b> · Day ${s.day}<div class="meta">${sets} sets${ups?` · level-up: ${esc(ups)}`:""}</div></div>
+    const swaps=Object.entries(s.entries||{}).filter(([k])=>altOf(k)).map(([k,e])=>ALT[altOf(k)] ? ALT[altOf(k)][0]+(EX[e.subFor]?" for "+EX[e.subFor].name:"") : null).filter(Boolean).join(", ");
+    return `<div class="card"><div class="row"><div><b>${fmtDate(s.date)}</b> · Day ${s.day}<div class="meta">${sets} sets${ups?` · level-up: ${esc(ups)}`:""}${swaps?` · swaps: ${esc(swaps)}`:""}</div></div>
       <span id="del-${s.id}"><button type="button" class="btn ghost" data-act="askdel" data-id="${s.id}">Delete</button></span></div></div>`;
   }).join("");
   return `<div class="block">
@@ -932,6 +982,7 @@ function viewProgress(){
     <div class="card"><div class="block-h"><h3>Last 12 weeks</h3><span class="sub"><span style="color:var(--accent)">■</span> Day A &nbsp;<span style="color:var(--chalk)">■</span> Day B</span></div><div class="cal">${calendar()}</div></div>
     <div class="block-h"><h2>Movements</h2><span class="sub">Line = level + share of the top of range reached</span></div>
     <div class="grid2">${cards}</div>
+    ${swapCards()}
     <div class="card">
       <div class="block-h"><h3>Your data</h3><span class="sub">${S.persistent===true?"Storage protected":S.persistent===false?"Browser may clear storage":""}</span></div>
       <div class="sub">Your log lives only in this browser on this phone. Save a backup now and then and keep it off the phone. The CSV has one row per set, for a spreadsheet or Python.</div>
@@ -1005,24 +1056,32 @@ document.addEventListener("click", async ev=>{
   const b = ev.target.closest("[data-act],[data-tab]"); if(!b) return;
   if(b.dataset.tab){ tab=b.dataset.tab; render(); window.scrollTo(0,0); return }
   const a=b.dataset.act, ex=b.dataset.ex, i=+b.dataset.i;
-  if(a==="inc"||a==="dec"){ const e=draft.entries[ex]; e.sets[i]=Math.max(0,Number(e.sets[i])+(a==="inc"?1:-1)*Number(b.dataset.step)); saveDraft(); render() }
-  else if(a==="done"){ const e=draft.entries[ex]; e.done[i]=!e.done[i]; saveDraft(); render(); if(e.done[i]) startTimer() }
-  else if(a==="show"){ ui.show.has(ex) ? ui.show.delete(ex) : ui.show.add(ex); render() }
-  else if(a==="pause"){ ui.frozen.has(ex) ? ui.frozen.delete(ex) : ui.frozen.set(ex, FIG.s); render() }
-  else if(a==="swap"){ ui.swap.has(ex) ? ui.swap.delete(ex) : ui.swap.add(ex); render() }
+  if(a==="inc"||a==="dec"){
+    const e=draft.entries[ex]; e.sets[i]=Math.max(0,Number(e.sets[i])+(a==="inc"?1:-1)*Number(b.dataset.step)); saveDraft();
+    const inp=document.getElementById(`v-${ex}-${i}`); if(inp) inp.value=e.sets[i]; refreshProgress(ex);
+  }
+  else if(a==="done"){ const e=draft.entries[ex]; e.done[i]=!e.done[i]; saveDraft(); b.setAttribute("aria-pressed", e.done[i]); refreshProgress(ex); if(e.done[i]) startTimer() }
+  else if(a==="hold"){ toggleHold(ex,i) }
+  else if(a==="show"){ ui.show.has(ex) ? ui.show.delete(ex) : ui.show.add(ex); refreshCard(ex) }
+  else if(a==="pause"){
+    ui.frozen.has(ex) ? ui.frozen.delete(ex) : ui.frozen.set(ex, FIG.s);
+    const f = cardEl(ex) && cardEl(ex).querySelector(".fig"); if(!f){ render(); return }
+    const e=draft.entries[ex]; f.outerHTML = figHTML(ex,e,spec(ex,e)); b.textContent = ui.frozen.has(ex) ? "▶ Play" : "⏸ Pause"; startFigures();
+  }
+  else if(a==="swap"){ ui.swap.has(ex) ? ui.swap.delete(ex) : ui.swap.add(ex); refreshCard(ex) }
   else if(a==="missing"){ const k=b.dataset.k, m=draft.missing; m.includes(k) ? m.splice(m.indexOf(k),1) : m.push(k); saveDraft(); render() }
   else if(a==="pick"){
     const e=draft.entries[ex];
     if(e.done.some(Boolean)){ toast("Untick the sets you have done before swapping this exercise."); return }
-    e.sub=b.dataset.id; e.sets=altLastValues(e.sub); e.done=Array(SETS).fill(false); ui.swap.delete(ex); saveDraft(); render();
+    e.sub=b.dataset.id; e.sets=altLastValues(e.sub); e.done=Array(SETS).fill(false); ui.swap.delete(ex); saveDraft(); refreshCard(ex);
   }
   else if(a==="unsub"){
     const e=draft.entries[ex];
     if(e.done.some(Boolean)){ toast("Untick the sets you have done before switching back."); return }
-    delete e.sub; e.sets=lastValues(ex,e.level); e.done=Array(SETS).fill(false); ui.swap.delete(ex); saveDraft(); render();
+    delete e.sub; e.sets=lastValues(ex,e.level); e.done=Array(SETS).fill(false); ui.swap.delete(ex); saveDraft(); refreshCard(ex);
   }
-  else if(a==="video"){ ui.video.add(b.dataset.key); render() }
-  else if(a==="warm"){ draft.warm[i]=!draft.warm[i]; saveDraft(); render() }
+  else if(a==="video"){ ui.video.add(b.dataset.key); refreshCard(ex || b.closest(".card").dataset.card) }
+  else if(a==="warm"){ draft.warm[i]=!draft.warm[i]; saveDraft(); b.setAttribute("aria-pressed", draft.warm[i]) }
   else if(a==="day"){ if(draft && draft.day!==b.dataset.day && Object.values(draft.entries).some(e=>e.done.some(Boolean))){ toast("Finish or clear the current session before switching day."); return } day=b.dataset.day; draft=null; render() }
   else if(a==="finish"){ b.disabled=true; await finish() }
   else if(a==="resetdraft"){ draft=null; LS.set(KEY.draft,null); render() }
@@ -1038,15 +1097,62 @@ document.addEventListener("change", ev=>{
   const t=ev.target;
   if(t.id==="importfile"){ if(t.files && t.files[0]) importBackup(t.files[0]); t.value=""; return }
   if(t.dataset.act!=="val") return;
-  draft.entries[t.dataset.ex].sets[+t.dataset.i]=Math.max(0,Number(t.value)||0); saveDraft(); render();
+  draft.entries[t.dataset.ex].sets[+t.dataset.i]=Math.max(0,Number(t.value)||0); saveDraft(); refreshProgress(t.dataset.ex);
 });
 
-/* ---------- Rest timer ---------- */
+/* ---------- Rest timer and hold timer ---------- */
+const buzz = p => { try{ if(navigator.vibrate) navigator.vibrate(p) }catch(e){} };
+const REST_LENGTHS = [60,90,120,180];
+const rest = {len: REST_LENGTHS.includes(LS.get("gravity-log:rest",90)) ? LS.get("gravity-log:rest",90) : 90};
+const clockText = s => `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
 let tEnd=0, tInt=null;
-function startTimer(){ tEnd=Date.now()+90000; document.getElementById("treset").hidden=false; clearInterval(tInt); tInt=setInterval(tick,250); tick() }
-function tick(){ const left=Math.max(0,Math.round((tEnd-Date.now())/1000)); document.getElementById("tclock").textContent=`${Math.floor(left/60)}:${String(left%60).padStart(2,"0")}`; if(!left){ clearInterval(tInt); document.getElementById("tclock").textContent="Go" } }
+function showRestLen(){
+  document.getElementById("tstart").textContent = `Rest ${rest.len} s`;
+  document.getElementById("tlen").textContent = `${rest.len} s`;
+  document.querySelectorAll(".restn").forEach(el=>el.textContent = rest.len);
+}
+function startTimer(){ tEnd=Date.now()+rest.len*1000; document.getElementById("treset").hidden=false; clearInterval(tInt); tInt=setInterval(tick,250); tick() }
+function tick(){
+  const left=Math.max(0,Math.round((tEnd-Date.now())/1000)), clock=document.getElementById("tclock");
+  clock.textContent = clockText(left);
+  if(!left){ clearInterval(tInt); clock.textContent="Go"; buzz([200,100,200,100,400]) }
+}
+function resetClock(){ clearInterval(tInt); document.getElementById("tclock").textContent = clockText(rest.len); document.getElementById("treset").hidden=true }
 document.getElementById("tstart").onclick=startTimer;
-document.getElementById("treset").onclick=()=>{ clearInterval(tInt); document.getElementById("tclock").textContent="1:30"; document.getElementById("treset").hidden=true };
+document.getElementById("treset").onclick=resetClock;
+document.getElementById("tlen").onclick=()=>{
+  rest.len = REST_LENGTHS[(REST_LENGTHS.indexOf(rest.len)+1)%REST_LENGTHS.length]; LS.set("gravity-log:rest", rest.len);
+  showRestLen(); if(document.getElementById("treset").hidden) document.getElementById("tclock").textContent = clockText(rest.len);
+};
+showRestLen(); document.getElementById("tclock").textContent = clockText(rest.len);
+
+// Hold timer: counts up while you hold; Stop writes the seconds into that set. It buzzes once when you pass the top of the range.
+let HOLD = null;
+const holdElapsed = () => HOLD ? Math.max(0, Math.round((Date.now()-HOLD.t0)/1000)) : 0;
+function holdBtn(){ return HOLD && document.querySelector(`[data-act="hold"][data-ex="${HOLD.ex}"][data-i="${HOLD.i}"]`) }
+function toggleHold(ex, i){
+  if(HOLD && !holdRunning(ex,i)) stopHold();
+  if(holdRunning(ex,i)){ stopHold(); return }
+  const e = draft.entries[ex], sp = spec(ex,e);
+  HOLD = {ex, i, t0:Date.now(), max:sp.max, buzzed:false, int:setInterval(holdTick,250)};
+  holdTick();
+}
+function holdTick(){
+  const b = holdBtn(); if(!HOLD) return;
+  const s = holdElapsed();
+  if(b){ b.classList.add("on"); b.textContent = `■ ${s} s`; b.setAttribute("aria-label","Stop the hold timer") }
+  if(!HOLD.buzzed && s>=HOLD.max){ HOLD.buzzed = true; buzz(300) }
+}
+function stopHold(){
+  if(!HOLD) return;
+  const {ex,i,int} = HOLD, s = Math.max(1, holdElapsed()); clearInterval(int); HOLD = null;
+  const e = draft && draft.entries[ex]; if(!e) return;
+  e.sets[i] = s; saveDraft();
+  const inp = document.getElementById(`v-${ex}-${i}`); if(inp) inp.value = s;
+  const b = document.querySelector(`[data-act="hold"][data-ex="${ex}"][data-i="${i}"]`);
+  if(b){ b.classList.remove("on"); b.textContent = "▶"; b.setAttribute("aria-label",`Start the hold timer for set ${i+1}`) }
+  refreshProgress(ex);
+}
 
 render();
 initStore();
