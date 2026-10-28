@@ -213,6 +213,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <button role="tab" id="tab-progress" aria-selected="false" data-tab="progress">Progress</button>
     <button role="tab" id="tab-routine" aria-selected="false" data-tab="routine">Routine</button>
     <button role="tab" id="tab-program" aria-selected="false" data-tab="program">Program</button>
+    <button role="tab" id="tab-settings" aria-selected="false" data-tab="settings">Settings</button>
   </nav>
 
   <main id="view"></main>
@@ -673,7 +674,7 @@ function startFigures(){
   if(!FIG.raf && document.querySelector(".fig[data-fig], .fig[data-photo]")) FIG.raf = requestAnimationFrame(figTick);
 }
 /* ---------- Storage: this device only (localStorage), with backup export/import ---------- */
-const KEY = {data:"gravity-log:data", draft:"gravity-log:draft", backup:"gravity-log:last-backup", prompt:"gravity-log:backup-prompt", autoOff:"gravity-log:auto-backup-off"};
+const KEY = {data:"gravity-log:data", draft:"gravity-log:draft", backup:"gravity-log:last-backup", prompt:"gravity-log:backup-prompt", autoOff:"gravity-log:auto-backup-off", lang:"gravity-log:lang"};
 const LS = {get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}};
 const S = {levels:{...START}, sessions:[], routine:"calisthenics", plans:{}, cardioOn:true, loaded:false, persistent:null};
 let tab = "train", day = null, draft = LS.get(KEY.draft, null);
@@ -752,7 +753,7 @@ async function autoBackup(){
   const again = '<button type="button" class="btn ghost" data-act="export">Save backup</button>';
   if(navigator.canShare && navigator.canShare({files:[file]})){
     try{ await navigator.share({files:[file], title:name}); LS.set(KEY.backup, new Date().toISOString()); toast("<b>Backup saved.</b> Keep the file off this phone."); render(); return }
-    catch(e){ if(e && e.name==="AbortError"){ toast("Backup skipped. You can save one any time in Progress, under Your data."); return } }
+    catch(e){ if(e && e.name==="AbortError"){ toast("Backup skipped. You can save one any time in Settings, under Your data."); return } }
   }
   toast(`<b>Time for a backup.</b> ${again}`, 12000);
 }
@@ -795,7 +796,7 @@ function altLastValues(id, n=SETS){
   return fitSets(sets || [], n, ALT[id][2]);
 }
 const todayISO = () => { const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10) };
-const fmtDate = iso => new Date(iso+"T12:00:00").toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"});
+const fmtDate = iso => new Date(iso+"T12:00:00").toLocaleDateString(LOC(),{weekday:"short",day:"numeric",month:"short"});
 const routineById = id => id==="calisthenics" || !S.plans[id] ? calisthenicsRoutine() : S.plans[id];
 const R = () => routineById(S.routine);
 const dayOf = id => R().days.find(d=>d.id===id) || R().days[0];
@@ -868,6 +869,107 @@ function ensureDraft(){
 }
 const saveDraft = () => LS.set(KEY.draft,draft);
 
+
+/* ---------- Language ---------- */
+// English is the source text. In Spanish, everything on screen is translated after it is drawn: text and labels are looked up in the
+// dictionary in lang-es.js (whole strings first, then strings with the numbers and known names taken out, then sentence by sentence).
+const LANG = {code:"en", dict:null, names:null, nameRe:null, rules:[]};
+const resolveLang = () => { const p = LS.get(KEY.lang,"auto"); return p==="auto" ? (/^es\b/i.test(navigator.language||"en") ? "es" : "en") : p };
+const LOC = () => LANG.code==="es" ? "es-ES" : undefined;
+const NUMRE = /\{\d+\}|\d+(?:\.\d+)?/g;
+const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+function trFill(es, nums, names){
+  let i = 0; es = es.replace(/#/g, ()=>{ const n = nums[i++]; return n===undefined ? "#" : n.replace(".",",") });
+  return names ? es.replace(/\{(\d+)\}/g, (_,k)=>names[+k]) : es;
+}
+function trCore(c, depth){
+  const D = LANG.dict;
+  if(D[c]!==undefined) return D[c];
+  if(LANG.names[c]!==undefined) return LANG.names[c];
+  const nums = [], k1 = c.replace(NUMRE, x=>{ if(x[0]==="{") return x; nums.push(x); return "#" });
+  if(nums.length && D[k1]!==undefined) return trFill(D[k1], nums);
+  const names = [], sk = c.replace(LANG.nameRe, m=>{ names.push(LANG.names[m]||m); return "{"+(names.length-1)+"}" });
+  if(names.length){
+    if(D[sk]!==undefined) return trFill(D[sk], [], names);
+    if(!/[A-Za-z]/.test(sk.replace(/\{\d+\}/g,""))) return trFill(sk, [], names);
+    const n2 = [], sk2 = sk.replace(NUMRE, x=>{ if(x[0]==="{") return x; n2.push(x); return "#" });
+    if(n2.length && D[sk2]!==undefined) return trFill(D[sk2], n2, names);
+  }
+  if(c.length>2 && c.endsWith(".") && !c.endsWith("..")){ const b = c.slice(0,-1), r = trCore(b, depth); if(r!==b) return r+"." }
+  for(const [re,t] of LANG.rules){ const m = c.match(re); if(m) return t.replace(/\$(\d)/g, (_,i)=>m[i]===undefined ? "" : trCore(m[i],depth+1)) }
+  if(depth<3){
+    const parts = c.split(/(\s*[.:;,·—–]\s+|\s+\(|\)\s*|\s\|\s)/);
+    if(parts.length>1){
+      let changed = false;
+      const out = parts.map((p,i)=>{ if(i%2 || !p) return p; const r = trCore(p, depth+1); if(r!==p) changed = true; return r });
+      if(changed) return out.join("");
+    }
+  }
+  return c;
+}
+function tr(s){
+  if(LANG.code!=="es" || !LANG.dict) return s;
+  const m = s.match(/^(\s*)([\s\S]*?)(\s*)$/); if(!m[2]) return s;
+  const r = trCore(m[2],0);
+  return m[1]+(r===m[2] ? r : r.replace(/(\d)\.(\d)/g,"$1,$2"))+m[3];
+}
+const TR_ATTRS = ["aria-label","title","placeholder","alt"];
+const noTr = n => { const e = n.nodeType===1 ? n : n.parentNode; return !e || !!(e.closest && e.closest(".fig,[data-notr],script,style,textarea")) };
+function trTextNode(n){
+  if(noTr(n)) return;
+  const cur = n.nodeValue, en = (n.__es!==undefined && cur===n.__es) ? n.__en : cur;
+  n.__en = en; const out = tr(en); n.__es = out; if(out!==cur) n.nodeValue = out;
+}
+function trAttr(el, a){
+  if(noTr(el)) return;
+  const cur = el.getAttribute(a); if(cur===null) return;
+  const st = el.__tr = el.__tr || {}, en = (st[a] && cur===st[a].es) ? st[a].en : cur, out = tr(en);
+  st[a] = {en, es:out}; if(out!==cur) el.setAttribute(a, out);
+}
+function trTree(root){
+  if(!root) return;
+  if(root.nodeType===3){ trTextNode(root); return }
+  if(root.nodeType!==1 || noTr(root)) return;
+  [root, ...root.querySelectorAll("*")].forEach(el=>{ TR_ATTRS.forEach(a=>{ if(el.hasAttribute(a)) trAttr(el,a) }) });
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = []; while(w.nextNode()) nodes.push(w.currentNode); nodes.forEach(trTextNode);
+}
+const trObs = new MutationObserver(recs=>{
+  trObs.disconnect();
+  try{ recs.forEach(r=>{ if(r.type==="characterData") trTextNode(r.target); else if(r.type==="attributes") trAttr(r.target, r.attributeName); else r.addedNodes.forEach(trTree) }) }
+  finally{ trObsStart() }
+});
+function trObsStart(){ trObs.observe(document.body, {childList:true, subtree:true, characterData:true, attributes:true, attributeFilter:TR_ATTRS}) }
+function setDict(){
+  LANG.dict = window.ES_DICT; LANG.names = window.ES_NAMES || {};
+  LANG.rules = (window.ES_RULES || []).map(([src,t])=>[new RegExp(src),t]);
+  const ns = Object.keys(LANG.names).sort((a,b)=>b.length-a.length).map(escRe);
+  LANG.nameRe = ns.length ? new RegExp("(?<![\\p{L}\\p{N}-])(?:"+ns.join("|")+")(?![\\p{L}\\p{N}-])","gu") : /(?!)/g;
+}
+function loadDict(done){
+  if(window.ES_DICT){ if(!LANG.dict) setDict(); done(true); return }
+  const s = document.createElement("script"); s.src = "lang-es.js?v=1";
+  s.onload = ()=>{ setDict(); done(true) }; s.onerror = ()=>done(false);
+  document.head.appendChild(s);
+}
+// Draw everything again in the chosen language (static parts of the page included).
+function applyLang(){
+  document.documentElement.lang = LANG.code;
+  trObs.disconnect(); try{ if(S.loaded) render(); trTree(document.body) } finally{ trObsStart() }
+}
+function setLang(pref){
+  LS.set(KEY.lang, pref);
+  const want = pref==="auto" ? (/^es\b/i.test(navigator.language||"en") ? "es" : "en") : pref;
+  if(want==="es" && !LANG.dict){
+    loadDict(ok=>{ if(ok){ LANG.code = "es"; applyLang() } else { LANG.code = "en"; applyLang(); toast("Could not load Spanish. Try again when you are online.") } });
+  } else { LANG.code = want; applyLang() }
+}
+function initLang(){
+  trObsStart();
+  const want = resolveLang();
+  if(want==="es") loadDict(ok=>{ if(ok){ LANG.code = "es"; applyLang() } });
+}
+
 /* ---------- Render ---------- */
 function render(){
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected", b.dataset.tab===tab));
@@ -878,7 +980,7 @@ function render(){
     const base = r.builtin ? "Calisthenics · 2 alternating days" : `${r.name} · ${r.inputs.days} days a week · about ${LENGTHS[r.inputs.len].min} min`;
     tg.textContent = S.plans.cardio && S.cardioOn!==false ? base+" + cardio" : base;
   }
-  v.innerHTML = tab==="train" ? viewTrain() : tab==="progress" ? viewProgress() : tab==="routine" ? viewRoutine() : viewProgram();
+  v.innerHTML = tab==="train" ? viewTrain() : tab==="progress" ? viewProgress() : tab==="routine" ? viewRoutine() : tab==="settings" ? viewSettings() : viewProgram();
   startFigures();
 }
 
@@ -1039,7 +1141,7 @@ function viewTrain(){
   const deload = r.kind==="gym" ? gymBanner(r) : isDeload() ? `<div class="banner deload"><b>Deload week (week ${weekNo()}).</b> Do 2 sets per exercise and stop 1–2 reps short of your best. Levels don't change this week.</div>` : "";
   const first = !S.sessions.length && r.id==="calisthenics" ? `<div class="banner info">Starting levels are set from your current numbers: 3–4 pull-ups, 8–10 push-ups, 3–4 dips, plank 30–40 s. Adjust any of them in Program if the first session feels too easy or too hard.</div>` : "";
   const lb = lastBackupDays();
-  const remind = S.sessions.length>=3 && (lb===null || lb>=14) ? `<div class="banner backup"><b>No backup for ${lb===null?"this log yet":lb+" days"}.</b> Save one in Progress, under Your data.</div>` : "";
+  const remind = S.sessions.length>=3 && (lb===null || lb>=14) ? `<div class="banner backup"><b>No backup for ${lb===null?"this log yet":lb+" days"}.</b> Save one in Settings, under Your data.</div>` : "";
   const effort = r.effort ? `<div class="banner info"><b>${esc(r.name)}.</b> ${esc(r.effort)}</div>` : "";
   const warm = warmupOf(r);
   let n = 1;
@@ -1084,7 +1186,7 @@ function calendar(){
   const weeks=12, cell=16, gap=4, now=new Date(); now.setHours(12,0,0,0);
   const monday = new Date(now); monday.setDate(now.getDate()-((now.getDay()+6)%7)-7*(weeks-1));
   const by = {}; S.sessions.forEach(s=>{ const days=routineById(s.routine||"calisthenics").days; by[s.date]=days.findIndex(d=>d.id===s.day)%2===0?"A":"B" });
-  let out=""; const lab=["M","T","W","T","F","S","S"];
+  let out=""; const lab=LANG.code==="es" ? ["L","M","X","J","V","S","D"] : ["M","T","W","T","F","S","S"];
   for(let r=0;r<7;r++) out+=`<text x="0" y="${22+r*(cell+gap)+12}" font-size="10" fill="var(--muted)" font-family="var(--mono)">${lab[r]}</text>`;
   for(let w=0;w<weeks;w++){
     for(let r=0;r<7;r++){
@@ -1095,7 +1197,7 @@ function calendar(){
       out+=`<rect x="${16+w*(cell+gap)}" y="${22+r*(cell+gap)}" width="${cell}" height="${cell}" rx="4" fill="${fill}" opacity="${fut?0.35:1}"><title>${iso}${s?" · Day "+s:""}</title></rect>`;
     }
     if(w%4===0){ const d=new Date(monday); d.setDate(monday.getDate()+w*7);
-      out+=`<text x="${16+w*(cell+gap)}" y="12" font-size="10" fill="var(--muted)" font-family="var(--mono)">${d.toLocaleDateString(undefined,{day:"numeric",month:"short"})}</text>` }
+      out+=`<text x="${16+w*(cell+gap)}" y="12" font-size="10" fill="var(--muted)" font-family="var(--mono)">${d.toLocaleDateString(LOC(),{day:"numeric",month:"short"})}</text>` }
   }
   const W=16+weeks*(cell+gap), H=22+7*(cell+gap);
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sessions over the last 12 weeks">${out}</svg>`;
@@ -1187,6 +1289,28 @@ function swapCards(){
   }).join("");
   return `<div class="block-h"><h2>Swaps</h2><span class="sub">Alternatives you used when equipment was missing. Line = best set</span></div><div class="grid2">${cards}</div>`;
 }
+function viewSettings(){
+  const n = S.sessions.length, pref = LS.get(KEY.lang,"auto"), opt = (v,label) => `<button type="button" class="tbtn" data-act="lang" data-v="${v}" aria-pressed="${pref===v}">${label}</button>`;
+  return `<div class="block">
+    <div class="card">
+      <div class="block-h"><h3>Language</h3></div>
+      <div class="tools">${opt("auto","Automatic")}${opt("en","English")}${opt("es","Español")}</div>
+      <div class="sub">Automatic follows your phone's language the first time and uses Spanish when it is Spanish, English otherwise.</div>
+    </div>
+    <div class="card">
+      <div class="block-h"><h3>Your data</h3><span class="sub">${S.persistent===true?"Storage protected":S.persistent===false?"Browser may clear storage":""}</span></div>
+      <div class="sub">Your log lives only in this browser on this phone. Save a backup now and then and keep it off the phone. The CSV has one row per set, for a spreadsheet or Python.</div>
+      <div class="data-actions">
+        <button type="button" class="btn primary" data-act="export">Save backup (JSON)</button>
+        <button type="button" class="btn ghost" data-act="csv" ${n?"":"disabled"}>Export sets (CSV)</button>
+        <button type="button" class="btn ghost" data-act="import">Restore from backup</button>
+        <input type="file" id="importfile" accept=".json,application/json" hidden>
+      </div>
+      <div class="last">Last backup: ${lastBackupDays()===null?"never":lastBackupDays()===0?"today":lastBackupDays()+" days ago"}</div>
+      <button type="button" class="tbtn" data-act="autobackup" aria-pressed="${!LS.get(KEY.autoOff,false)}">Weekly backup prompt after a session: ${LS.get(KEY.autoOff,false)?"off":"on"}</button>
+    </div>
+  </div>`;
+}
 function viewProgress(){
   const n=S.sessions.length;
   const monday=new Date(); monday.setHours(0,0,0,0); monday.setDate(monday.getDate()-((monday.getDay()+6)%7));
@@ -1223,18 +1347,6 @@ function viewProgress(){
     <div class="block-h"><h2>Movements</h2><span class="sub">Line = level + share of the top of range reached</span></div>
     <div class="grid2">${cards}${gymProgressCards()}</div>
     ${swapCards()}
-    <div class="card">
-      <div class="block-h"><h3>Your data</h3><span class="sub">${S.persistent===true?"Storage protected":S.persistent===false?"Browser may clear storage":""}</span></div>
-      <div class="sub">Your log lives only in this browser on this phone. Save a backup now and then and keep it off the phone. The CSV has one row per set, for a spreadsheet or Python.</div>
-      <div class="data-actions">
-        <button type="button" class="btn primary" data-act="export">Save backup (JSON)</button>
-        <button type="button" class="btn ghost" data-act="csv" ${n?"":"disabled"}>Export sets (CSV)</button>
-        <button type="button" class="btn ghost" data-act="import">Restore from backup</button>
-        <input type="file" id="importfile" accept=".json,application/json" hidden>
-      </div>
-      <div class="last">Last backup: ${lastBackupDays()===null?"never":lastBackupDays()===0?"today":lastBackupDays()+" days ago"}</div>
-      <button type="button" class="tbtn" data-act="autobackup" aria-pressed="${!LS.get(KEY.autoOff,false)}">Weekly backup prompt after a session: ${LS.get(KEY.autoOff,false)?"off":"on"}</button>
-    </div>
     <div class="block-h"><h2>History</h2></div>
     <div class="hist">${hist || '<p class="empty">Finished sessions appear here. Start with today\'s session in Train.</p>'}</div>
   </div>`;
@@ -1243,7 +1355,7 @@ function viewProgress(){
 // The same photo or figure, muscles and video as on Train, for any level of a ladder.
 function progPanel(ex, i){ const e = {level:i}; return showPanel(ex, e, spec(ex,e)) }
 function programProse(){
-  return `<div class="card prose">
+  return `<div class="card prose" data-notr>
       <h2>How the program works</h2>
       <ul>
         <li><b>Schedule.</b> Three full-body sessions a week on non-consecutive days, alternating Day A and Day B (A-B-A one week, B-A-B the next).</li>
@@ -1260,7 +1372,7 @@ function programProse(){
 ui.progG = new Set();
 function gymProse(){
   const r = R(), i = r.inputs || {};
-  return `<div class="card prose">
+  return `<div class="card prose" data-notr>
       <h2>${esc(r.name)}</h2>
       <ul>
         <li><b>Plan.</b> ${r.days.length} days a week, ${esc(LENGTHS[i.len]?LENGTHS[i.len].label:"")}, goal: ${esc(GOALS[i.goal]?GOALS[i.goal].name:"")}. Built in the Routine tab, with the sources for every rule.</li>
@@ -1282,7 +1394,7 @@ function gymCatalogHTML(){
 }
 function homeProse(){
   const r = R(), i = r.inputs || {};
-  return `<div class="card prose">
+  return `<div class="card prose" data-notr>
       <h2>${esc(r.name)}</h2>
       <ul>
         <li><b>Plan.</b> ${r.days.length} days a week, ${esc(LENGTHS[i.len]?LENGTHS[i.len].label:"")}, goal: ${esc(GOALS[i.goal]?GOALS[i.goal].name:"")}. Built in the Routine tab, with the sources for every rule.</li>
@@ -1461,7 +1573,7 @@ function cardioSection(){
     <div class="cue">${esc(s.effort)}</div>
     ${s.hr?`<div class="needs">Heart rate target: ${esc(s.hr)}. Trust the talk test over the number.</div>`:""}
     ${today?`<div class="needs">You already logged cardio today.</div>`:""}
-    <label class="cf">Activity <select id="cf-activity" data-cf="activity">${s.activities.map(a=>`<option ${a===cdraft.activity?"selected":""}>${esc(a)}</option>`).join("")}</select></label>
+    <label class="cf">Activity <select id="cf-activity" data-cf="activity">${s.activities.map(a=>`<option value="${esc(a)}" ${a===cdraft.activity?"selected":""}>${esc(a)}</option>`).join("")}</select></label>
     ${vo2?`<div class="tools"><button type="button" class="tbtn" data-act="intv" aria-pressed="${!!INTV}">${INTV?"■ Stop":"▶ Start interval timer"}</button><span class="sub" id="intv-text">${esc(tierText(s.tier))}</span></div>`:""}
     <div class="cf-grid">
       ${num("minutes","Minutes","min=1")}${num("rpe","Effort 1–10","min=1 max=10")}${num("dist","Distance km (optional)","min=0 step=0.1")}${num("hr","Average heart rate (optional)","min=30 max=230")}${vo2?num("rounds","Rounds done","min=0"):""}
@@ -1905,7 +2017,7 @@ function viewRoutine(){
     <div class="finish"><button type="button" class="btn primary" data-act="rfgen">Preview plan</button></div>
   </div>`;
   const prev = f.preview ? `<div class="block-h"><h2 id="rf-preview">Preview</h2></div>${planPreview(f.preview)}<div class="finish"><button type="button" class="btn primary" data-act="rfuse">Use this plan</button><button type="button" class="btn ghost" data-act="rfdiscard">Discard</button></div>` : "";
-  const ev = `<div class="block-h"><h2>Why these rules</h2></div><div class="card prose"><div class="sub">${esc(f.type==="cardio" ? CARDIO_NOTE : EVIDENCE_NOTE)}</div>${(f.type==="cardio" ? EVIDENCE_CARDIO : f.type==="gym" ? EVIDENCE.concat(EVIDENCE_GYM) : EVIDENCE).map(e=>`<div><b>${esc(e.rule)}.</b> ${esc(e.use)}<div class="sub">${esc(e.text)}</div>${e.links.length?`<div class="sub">${e.links.map(([t,u])=>`<a href="${u}" target="_blank" rel="noopener">${esc(t)}</a>`).join(" · ")}</div>`:""}<div class="sub"><i>${esc(e.confidence)}</i></div></div>`).join("")}</div>`;
+  const ev = `<div class="block-h"><h2>Why these rules</h2></div><div class="card prose" data-notr><div class="sub">${esc(f.type==="cardio" ? CARDIO_NOTE : EVIDENCE_NOTE)}</div>${(f.type==="cardio" ? EVIDENCE_CARDIO : f.type==="gym" ? EVIDENCE.concat(EVIDENCE_GYM) : EVIDENCE).map(e=>`<div><b>${esc(e.rule)}.</b> ${esc(e.use)}<div class="sub">${esc(e.text)}</div>${e.links.length?`<div class="sub">${e.links.map(([t,u])=>`<a href="${u}" target="_blank" rel="noopener">${esc(t)}</a>`).join(" · ")}</div>`:""}<div class="sub"><i>${esc(e.confidence)}</i></div></div>`).join("")}</div>`;
   return `<div class="block">${active}${types}${form}${prev}${ev}</div>`;
 }
 function setRest(len){
@@ -2003,10 +2115,11 @@ document.addEventListener("click", async ev=>{
   else if(a==="edcancel"){ ui.edit = null; render() }
   else if(a==="edsave"){ saveEdit() }
   else if(a==="edrm"){ delete ui.edit.entries[b.dataset.k]; render() }
+  else if(a==="lang"){ setLang(b.dataset.v) }
   else if(a==="csave"){ saveCardio() }
   else if(a==="intv"){ INTV ? stopIntervals(false) : startIntervals() }
   else if(a==="cardiotoggle"){ S.cardioOn = S.cardioOn===false; try{ saveLocal() }catch(e){} render() }
-  else if(a==="rftype"){ ui.rf.type = b.dataset.v; ui.rf.preview = null; render() }
+  else if(a==="rftype"){ ui.rf.type = b.dataset.v; ui.rf.preview = null; if(!(ui.rf.goal in (ui.rf.type==="cardio"?CARDIO_GOALS:GOALS))) ui.rf.goal = ui.rf.type==="cardio"?"health":"general"; render() }
   else if(a==="rfact"){ const L = ui.rf.activities, k = b.dataset.k; if(L.includes(k) && L.length===1){ toast("Keep at least one activity selected.") } else { L.includes(k) ? L.splice(L.indexOf(k),1) : L.push(k); ui.rf.preview = null; render() } }
   else if(a==="rflow"){ ui.rf.lowImpact = !ui.rf.lowImpact; ui.rf.preview = null; render() }
   else if(a==="rfeq"){ const L = ui.rf.equip, k = b.dataset.k; if(L.includes(k) && L.length===1){ toast("Keep at least one kind of equipment selected.") } else { L.includes(k) ? L.splice(L.indexOf(k),1) : L.push(k); ui.rf.preview = null; render() } }
@@ -2096,6 +2209,7 @@ function stopHold(){
 
 render();
 initStore();
+initLang();
 if("serviceWorker" in navigator && location.protocol==="https:"){ navigator.serviceWorker.register("sw.js").catch(()=>{}) }
 </script>
 </body>
