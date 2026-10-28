@@ -31,9 +31,9 @@ The app then opens full screen and works offline after the first visit.
 ## Keeping your progress
 
 - The log is kept in `localStorage` on that phone, in the browser that installed the app. It survives app updates and restarts.
-- It is lost if you clear the browser's data for the site or delete the home-screen app on iPhone. iOS can also clear storage for a site you haven't opened for several weeks. The app asks the browser to protect its storage, and Progress shows whether that was granted.
-- **Progress > Your data > Save backup (JSON)** writes the complete log to a file. On a phone it opens the share sheet, so you can save it to Files or Drive, or email it to yourself. **Restore from backup** reads it back and merges it, so sessions that are already there are not duplicated.
-- After you finish a session, if your last backup is a week old, the phone's share sheet opens with the backup file so you can save it to Drive, Files or email (at most once a week; a switch under Your data turns it off).
+- It is lost if you clear the browser's data for the site or delete the home-screen app on iPhone. iOS can also clear storage for a site you haven't opened for several weeks. The app asks the browser to protect its storage, and Settings shows whether that was granted.
+- **Settings > Your data > Save backup (JSON)** writes the complete log to a file. On a phone it opens the share sheet, so you can save it to Files or Drive, or email it to yourself. **Restore from backup** reads it back and merges it, so sessions that are already there are not duplicated.
+- After you finish a session, if your last backup is a week old, the phone's share sheet opens with the backup file so you can save it to Drive, Files or email (at most once a week; a switch under Settings > Your data turns it off).
 - The app reminds you on the Train tab when you have 3 or more sessions and no backup in the last 14 days.
 
 ## Analysing on a PC
@@ -110,3 +110,11 @@ Push a change and the phone picks it up the next time the app opens online. Page
 Renaming or adding a ladder level shifts the meaning of the stored level numbers, so add new levels at the end of a ladder where possible.
 
 Every `*.github.io` project of your account shares one browser storage area. The app's keys all start with `gravity-log:`, so other projects you host there won't collide with it.
+
+## Language
+
+Settings > Language chooses **Automatic**, **English** or **Español** (Spain, informal "tú"). Automatic follows the phone's language the first time and the choice is remembered on the phone (`gravity-log:lang`).
+
+English is the source text in `docs/index.html`. Spanish is applied after the screen is drawn: `docs/lang-es.js` holds a dictionary (`ES_DICT`: whole strings and sentence pieces, numbers written as `#`), a list of names usable inside sentences (`ES_NAMES`: exercises, patterns) and a few regex rules (`ES_RULES`, for things like "Switch to X"). The file is loaded only when Spanish is used. Anything without a dictionary entry stays in English, so a missing translation never breaks the app.
+
+Translated: the interface, exercise names and cues, and the notes and warnings in generated plans. Left in English on purpose: the evidence and "how it works" text, source titles and links, CSV column headers and backup file names. Dates and decimal commas follow the Spanish format.
