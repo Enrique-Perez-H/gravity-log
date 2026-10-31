@@ -173,6 +173,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .needs.miss{color:var(--warn);font-weight:600}
 .alt-opt{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
 .alt-opt .cue{grid-column:1/-1}
+.alt-opt.custom{display:block}
+.cs-results{display:grid;gap:6px;margin-top:6px}
+.cs-results:empty{display:none}
 .fig{display:grid;max-width:340px}
 .fig svg{width:100%;height:auto;background:var(--bg);border-radius:10px}
 .fig .skin{fill:var(--skin);stroke:var(--skin-line);stroke-width:.6;stroke-linejoin:round}
@@ -562,6 +565,12 @@ const PHOTO_ALT = {superman:"Superman",superman_hold:"Superman",table_row:"Inver
 const photoOf = (ex,e) => e.sub ? (PHOTO_ALT[e.sub]||null) : ((PHOTO[ex]||{})[e.level]||null);
 const ALT_EX = {};
 Object.entries(ALTMAP).forEach(([ex,groups])=>groups.forEach(([,ids])=>ids.forEach(id=>{ if(!ALT_EX[id]) ALT_EX[id]=ex })));
+// Every ladder level can also stand in for another exercise (the "search any exercise" box), so each is registered as an alternative named lv_<exercise>_<level>.
+Object.keys(EX).forEach(ex=>EX[ex].levels.forEach((L,i)=>{
+  const id = "lv_"+ex+"_"+i;
+  ALT[id] = [L[0], L[1], L[2], L[3], EX[ex].unit, needsOf(ex,i), (VIS[ex]||[])[i]||["stand"]];
+  ALT_EX[id] = ex; if((PHOTO[ex]||{})[i]) PHOTO_ALT[id] = PHOTO[ex][i];
+}));
 const musclesFor = (ex,e) => MUSCLES[e && e.sub ? (ALT_EX[e.sub]||ex) : ex] || {main:[],also:[]};
 
 // A body segment as a smooth tapered shape between two joints; t0..t1 picks a stretch of it, w is the width at the ends and mid at the middle.
@@ -864,7 +873,7 @@ function ensureDraft(){
   // keep levels in line with the program if changed elsewhere
   Object.keys(draft.entries).forEach(ex=>{
     const l=S.levels[ex];
-    if(draft.entries[ex].level!==l && !draft.entries[ex].sub && !draft.entries[ex].done.some(Boolean)){ const n=draft.entries[ex].sets.length; draft.entries[ex]={level:l,sets:lastValues(ex,l,n),done:Array(n).fill(false)} }
+    if(draft.entries[ex].level!==l && !draft.entries[ex].sub && !draft.entries[ex].gym && !draft.entries[ex].done.some(Boolean)){ const n=draft.entries[ex].sets.length; draft.entries[ex]={level:l,sets:lastValues(ex,l,n),done:Array(n).fill(false)} }
   });
 }
 const saveDraft = () => LS.set(KEY.draft,draft);
@@ -1014,6 +1023,7 @@ function swapPanel(ex, e, sp){
   return `<div class="panel">
     <div class="sub">What are you missing today?</div><div class="tools">${chips}</div>
     ${opts || '<div class="sub">No alternative left without that equipment. Skip this one today and log the rest.</div>'}
+    ${customSlot(ex)}
     ${e.sub?`<button type="button" class="btn ghost" data-act="unsub" data-ex="${ex}">Back to ${esc(lv(ex,e.level).name)}</button>`:""}
     <div class="sub">Only for this session. Your level stays where it is, and the alternative is logged under its own name.</div>
   </div>`;
@@ -1041,7 +1051,7 @@ function targetHTML(sp, e){
 }
 const holdRunning = (ex,i) => HOLD && HOLD.ex===ex && HOLD.i===i;
 function exCard(ex){
-  if(isGymKey(ex)) return gymCard(ex);
+  if(isGymKey(ex) || draft.entries[ex].gym) return gymCard(ex);
   const e = draft.entries[ex], sp = spec(ex,e), step = sp.unit==="s" ? 5 : 1, unit = sp.unit==="s" ? "s" : "reps";
   const sets = e.sets.map((val,i)=>`
     <div class="set">
@@ -1098,6 +1108,7 @@ function gymCard(key){
   return `<div class="card" data-card="${key}">
     <div class="ex-top"><div><div class="pattern">${esc(GYM.slots[e.slot].pattern)}</div><h3>${esc(M.name)}</h3></div><span class="pill new">${esc(EQNAME[M.eq])}</span></div>
     <div class="cue">${esc(M.cue)}</div>
+    ${e.subFor?`<div class="needs">Standing in for ${esc(lv(e.subFor,S.levels[e.subFor]).name)}. Level stays the same.</div>`:""}
     <div class="needs">${esc(e.hint)}</div>
     ${e.stall ? `<div class="banner deload">No progress on this lift for 3 sessions. A lighter week, more sleep or more food can unstick it, or try a different movement. <button type="button" class="btn ghost" data-act="gpick" data-ex="${key}" data-id="${e.stall}">Switch to ${esc(GYM.moves[e.stall].name)}</button></div>` : ""}
     <div class="target">Target ${e.sets.length} × ${e.range[0]}–${e.range[1]} ${unit}</div>
@@ -1119,14 +1130,57 @@ function gymShowPanel(key, e){
   </div>`;
 }
 function gymSwapPanel(key, e){
+  if(e.subFor) return `<div class="panel">
+    <div class="sub">Standing in for ${esc(lv(e.subFor,S.levels[e.subFor]).name)}. Only for this session. Your level stays where it is.</div>
+    ${customSlot(key)}
+    <button type="button" class="btn ghost" data-act="unsub" data-ex="${key}">Back to ${esc(lv(e.subFor,S.levels[e.subFor]).name)}</button>
+  </div>`;
   const plan = R(), opts = moveOptions(plan, e.slot);
   return `<div class="panel">
     <div class="sub">Other ${esc(GYM.slots[e.slot].name.toLowerCase())} movements you can use. Your choice stays until you change it.</div>
     ${opts.map(id=>{ const M = GYM.moves[id]; return `<div class="alt-opt"><div><b>${esc(M.name)}</b><div class="last">${esc(EQNAME[M.eq])} · ${esc(M.muscles)}</div></div>
       <button type="button" class="btn ghost" data-act="gpick" data-ex="${key}" data-id="${id}" ${id===e.move?"disabled":""}>${id===e.move?"In use":"Use"}</button><div class="cue">${esc(M.cue)}</div></div>` }).join("")}
+    ${customSlot(key)}
     ${plan.picks && plan.picks[e.slot] ? `<button type="button" class="btn ghost" data-act="gauto" data-ex="${key}">Back to auto-rotation</button>` : ""}
     <div class="sub">With auto-rotation the movement changes every ${plan.cycle} weeks: ${plan.cycle-1} weeks of training, then a lighter week.</div>
   </div>`;
+}
+/* ---------- Search any exercise ---------- */
+// A third, blank option next to the suggested alternatives: type a few letters and pick any exercise in the app.
+const plain = s => s.normalize("NFD").replace(/\p{M}/gu,"").toLowerCase();
+let CAT = null;
+function catalog(){
+  if(CAT) return CAT;
+  CAT = []; const seen = new Set();
+  Object.entries(ALT).sort(([a],[b])=>(a.startsWith("lv_")?1:0)-(b.startsWith("lv_")?1:0)).forEach(([id,A])=>{
+    if(seen.has(A[0])) return; seen.add(A[0]);
+    CAT.push({k:"alt", id, name:A[0], sub:A[5].length ? "needs "+A[5].map(q=>EQ[q].toLowerCase()).join(", ") : "no equipment"});
+  });
+  Object.entries(GYM.moves).forEach(([id,M])=>CAT.push({k:"gym", id, name:M.name, sub:EQNAME[M.eq]+" · "+M.muscles}));
+  return CAT;
+}
+const customSlot = key => `<div class="alt-opt custom"><label class="cf">Or search any exercise<input type="search" data-csearch="${key}" placeholder="Type an exercise, for example pull" autocomplete="off" autocapitalize="none" spellcheck="false"></label><div class="cs-results" id="csr-${key}"></div></div>`;
+function customResults(key, q){
+  const words = plain(q).split(/[\s-]+/).filter(Boolean);
+  if(words.join("").length<2) return '<div class="sub">Type at least two letters.</div>';
+  const e = draft.entries[key], onGym = isGymKey(key), cur = e.gym ? e.move : e.sub;
+  const used = new Set(Object.entries(draft.entries).filter(([k,x])=>x.gym && k!==key).map(([,x])=>x.move));
+  const hits = catalog().filter(c=>{
+    if(onGym && c.k!=="gym") return false;
+    if(c.k==="gym" && used.has(c.id)) return false;
+    const hay = plain(c.name)+" "+plain(tr(c.name));
+    return words.every(w=>hay.includes(w));
+  }).sort((a,b)=>(plain(a.name).startsWith(words[0])||plain(tr(a.name)).startsWith(words[0])?0:1)-(plain(b.name).startsWith(words[0])||plain(tr(b.name)).startsWith(words[0])?0:1)).slice(0,12);
+  if(!hits.length) return '<div class="sub">Nothing matches. Try a shorter word, for example "pull" or "squat".</div>';
+  return hits.map(c=>{ const inUse = c.id===cur;
+    return `<div class="alt-opt"><div><b>${esc(c.name)}</b><div class="last">${esc(c.sub)}</div></div>
+      <button type="button" class="btn ghost" data-act="cpick" data-ex="${key}" data-id="${c.id}" data-k="${c.k}" ${inUse?"disabled":""}>${inUse?"In use":"Use"}</button></div>` }).join("");
+}
+// A gym-style entry (kg and reps) standing in for a calisthenics or home exercise for one session.
+function customGymEntry(id, n, subFor, orig){
+  const M = GYM.moves[id], slot = Object.keys(GYM.slots).find(k=>GYM.slots[k].moves.includes(id)) || "core";
+  const rg = M.unit==="s" ? [30,60] : GYM.slots[slot].kind==="compound" ? [6,12] : [10,15], sug = nextGym(id, rg, M.inc, n);
+  return {gym:true, slot, move:id, range:rg, hint:sug.hint, sets:sug.reps, loads:sug.loads, done:Array(n).fill(false), stall:null, subFor, orig};
 }
 function gymBanner(r){
   const i = gymInfo(r);
@@ -1220,7 +1274,7 @@ function sessionEditHTML(){
     }
     const alt = altOf(k), name = alt ? (ALT[alt] ? ALT[alt][0] : alt) : (EX[k] ? EX[k].name : k), unit = alt ? (ALT[alt]?ALT[alt][4]:"reps") : (EX[k]?EX[k].unit:"reps");
     const which = alt
-      ? `<select data-ed="alt" data-k="${esc(k)}" aria-label="Alternative used">${altChoices(e.subFor).map(id=>`<option value="${id}" ${id===alt?"selected":""}>${esc(ALT[id][0])}</option>`).join("")}</select>`
+      ? `<select data-ed="alt" data-k="${esc(k)}" aria-label="Alternative used">${(ch=>ch.includes(alt)?ch:[alt,...ch])(altChoices(e.subFor)).map(id=>`<option value="${id}" ${id===alt?"selected":""}>${esc(ALT[id][0])}</option>`).join("")}</select>`
       : `<select data-ed="level" data-k="${esc(k)}" aria-label="Level used">${EX[k].levels.map((L,i)=>`<option value="${i}" ${i===e.level?"selected":""}>${i+1}. ${esc(L[0])}</option>`).join("")}</select>`;
     const sets = e.sets.map((v,i)=>`<span class="ed-set"><input type="number" inputmode="numeric" min="0" value="${v}" data-ed="val" data-k="${esc(k)}" data-i="${i}" aria-label="${esc(name)} set ${i+1} ${unit==="s"?"seconds":"reps"}"><label><input type="checkbox" data-ed="done" data-k="${esc(k)}" data-i="${i}" ${e.done[i]?"checked":""}> done</label></span>`).join("");
     return `<div class="ed-ex"><div class="ed-h"><b>${esc(name)}</b>${alt&&EX[e.subFor]?` <span class="sub">for ${esc(EX[e.subFor].name)}</span>`:""}<button type="button" class="btn ghost" data-act="edrm" data-k="${esc(k)}">Remove</button></div>${which}<div class="ed-sets">${sets}</div><div class="sub">${unit==="s"?"seconds":"reps"} per set</div></div>`;
@@ -1435,7 +1489,7 @@ function gymInfo(plan){
 const moveOptions = (plan, slot) => GYM.slots[slot].moves.filter(id=>{ const eq = GYM.moves[id].eq; return eq==="body" || plan.equip.includes(eq) });
 function moveFor(plan, slot){
   const o = moveOptions(plan, slot), pick = plan.picks && plan.picks[slot];
-  if(pick && o.includes(pick)) return pick;
+  if(pick && (o.includes(pick) || GYM.moves[pick])) return pick;
   return o[(((plan.base && plan.base[slot])||0) + gymInfo(plan).block) % o.length];
 }
 // The last session in which this movement was actually done.
@@ -2042,7 +2096,7 @@ async function finish(){
   const deload=isDeload(), ups=[], entries={};
   Object.entries(draft.entries).forEach(([ex,e])=>{
     if(!e.done.some(Boolean)) return;
-    if(e.gym){ entries["g:"+e.move] = {gym:true, slot:e.slot, sets:e.sets.map(Number), loads:e.loads.map(Number), done:e.done.slice()}; return }
+    if(e.gym){ entries["g:"+e.move] = {gym:true, slot:e.slot, sets:e.sets.map(Number), loads:e.loads.map(Number), done:e.done.slice(), ...(e.subFor?{subFor:e.subFor}:{})}; return }
     if(e.sub){
       const key = entries["alt:"+e.sub] ? `alt:${e.sub}:${ex}` : "alt:"+e.sub;
       entries[key]={level:0, sets:e.sets.map(Number), done:e.done.slice(), subFor:ex};
@@ -2063,6 +2117,10 @@ async function finish(){
   if(backupDue()) await autoBackup();
 }
 
+document.addEventListener("input", ev=>{
+  const t = ev.target, k = t.dataset && t.dataset.csearch; if(!k) return;
+  const box = document.getElementById("csr-"+k); if(box && draft && draft.entries[k]) box.innerHTML = customResults(k, t.value);
+});
 document.addEventListener("click", async ev=>{
   const b = ev.target.closest("[data-act],[data-tab]"); if(!b) return;
   if(b.dataset.tab){ tab=b.dataset.tab; render(); window.scrollTo(0,0); return }
@@ -2100,9 +2158,25 @@ document.addEventListener("click", async ev=>{
     if(e.done.some(Boolean)){ toast("Untick the sets you have done before swapping this exercise."); return }
     const n=e.sets.length; e.sub=b.dataset.id; e.sets=altLastValues(e.sub,n); e.done=Array(n).fill(false); ui.swap.delete(ex); saveDraft(); refreshCard(ex);
   }
+  else if(a==="cpick"){
+    const e=draft.entries[ex];
+    if(e.done.some(Boolean)){ toast("Untick the sets you have done before swapping this exercise."); return }
+    const id=b.dataset.id, n=e.sets.length;
+    if(isGymKey(ex)){
+      const plan=R(); plan.picks = plan.picks || {}; plan.picks[e.slot] = id;
+      try{ saveLocal() }catch(er){ toast("Could not save your choice on this phone."); return }
+      draft.entries[ex] = gymEntryFor(e.slot, n, e.range);
+    } else {
+      const orig = e.gym ? e.orig : JSON.parse(JSON.stringify(e));
+      if(b.dataset.k==="gym") draft.entries[ex] = customGymEntry(id, n, ex, orig);
+      else { const f = JSON.parse(JSON.stringify(orig)); f.sub = id; f.sets = altLastValues(id,n); f.done = Array(n).fill(false); draft.entries[ex] = f }
+    }
+    ui.swap.delete(ex); saveDraft(); refreshCard(ex);
+  }
   else if(a==="unsub"){
     const e=draft.entries[ex];
     if(e.done.some(Boolean)){ toast("Untick the sets you have done before switching back."); return }
+    if(e.gym && e.orig){ const o = e.orig; o.done = Array(o.sets.length).fill(false); draft.entries[ex] = o; ui.swap.delete(ex); saveDraft(); refreshCard(ex); return }
     const n=e.sets.length; delete e.sub; e.sets=lastValues(ex,e.level,n); e.done=Array(n).fill(false); ui.swap.delete(ex); saveDraft(); refreshCard(ex);
   }
   else if(a==="video"){ ui.video.add(b.dataset.key); if(tab==="train") refreshCard(ex || b.closest(".card").dataset.card); else render() }
